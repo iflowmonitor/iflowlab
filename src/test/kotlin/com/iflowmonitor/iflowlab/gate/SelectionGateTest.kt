@@ -1,6 +1,7 @@
 package com.iflowmonitor.iflowlab.gate
 
 import com.iflowmonitor.iflowlab.model.Expectation
+import com.iflowmonitor.iflowlab.model.Namespaces
 import com.iflowmonitor.iflowlab.model.ReceiverSpec
 import com.iflowmonitor.iflowlab.model.RoutingMode
 import com.iflowmonitor.iflowlab.parseXml
@@ -17,7 +18,8 @@ class SelectionGateTest {
         mode = RoutingMode.RECEIVER,
         emitted = parseXml(emitted),
         expectation = Expectation(expected.map { ReceiverSpec(it) }),
-        namespaces = emptyMap(),
+        // Exercise the same effective-namespace path production uses (ns0 pre-registered), not a bare map.
+        namespaces = Namespaces.effective(emptyMap(), emptyMap()),
     )
 
     /** AC17 — receiver match is order-insensitive: emitted order differs from expected, sets equal. */

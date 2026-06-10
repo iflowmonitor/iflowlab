@@ -42,6 +42,25 @@ class NamespaceAndParamTest {
         assertEquals(0, code, output)
     }
 
+    /** AC5 — a YAML bool param (`dc_Priority: true`) reaches Saxon as the string "true". */
+    @Test
+    fun yamlBoolParamCoercedToString() {
+        seed("param-echo.xslt", "r.xslt")
+        val (code, output) = run(
+            """
+            xslt: r.xslt
+            mode: receiver
+            tests:
+              - name: bool param echoes as string
+                params: { dc_Priority: true }
+                expect:
+                  receivers:
+                    - name: "true"
+            """.trimIndent(),
+        )
+        assertEquals(0, code, output)
+    }
+
     /** AC7 — with no `namespaces:` declared, ns0 is pre-registered to the SAP URI and resolves. */
     @Test
     fun ns0PreRegisteredWhenUndeclared() {
