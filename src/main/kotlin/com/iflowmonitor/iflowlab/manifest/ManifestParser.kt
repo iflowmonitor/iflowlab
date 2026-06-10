@@ -1,6 +1,7 @@
 package com.iflowmonitor.iflowlab.manifest
 
 import com.iflowmonitor.iflowlab.model.Expectation
+import com.iflowmonitor.iflowlab.model.InterfaceSpec
 import com.iflowmonitor.iflowlab.model.ReceiverSpec
 import com.iflowmonitor.iflowlab.model.RoutingMode
 import org.yaml.snakeyaml.Yaml
@@ -103,8 +104,34 @@ object ManifestParser {
             }
             val nm = rm["name"]?.toString()
                 ?: throw ManifestException("test '$caseName' receivers[$i] is missing 'name'")
-            ReceiverSpec(name = nm)
+            ReceiverSpec(name = nm, interfaces = parseInterfaces(rm["interfaces"], caseName, i))
         }
         return Expectation(receivers = receivers)
+    }
+
+    private val INTERFACE_KEYS = setOf("endpoint", "index", "name")
+
+    /** Nested combined-mode interfaces. null = not asserted; a list (possibly empty) = asserted (P4). */
+    private fun parseInterfaces(v: Any?, caseName: String, ri: Int): List<InterfaceSpec>? {
+        if (v == null) return null
+        val list = v as? List<*>
+            ?: throw ManifestException("test '$caseName' receivers[$ri] 'interfaces' must be a list")
+        return list.mapIndexed { j, iface ->
+            val im = iface as? Map<*, *>
+                ?: throw ManifestException("test '$caseName' receivers[$ri] interfaces[$j] must be a mapping")
+            val unknown = im.keys.map { it.toString() } - INTERFACE_KEYS
+            if (unknown.isNotEmpty()) {
+                throw ManifestException(
+                    "test '$caseName' receivers[$ri] interfaces[$j] has unsupported key(s) $unknown; " +
+                        "use 'endpoint' (maps to Interface/Service), 'index', 'name'",
+                )
+            }
+            val endpoint = im["endpoint"]?.toString()
+                ?: throw ManifestException(
+                    "test '$caseName' receivers[$ri] interfaces[$j] is missing 'endpoint'",
+                )
+            // index is an asserted string VALUE when present (never coerced/required) — PRD §D7.
+            InterfaceSpec(endpoint = endpoint, index = im["index"]?.toString(), name = im["name"]?.toString())
+        }
     }
 }
