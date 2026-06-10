@@ -94,8 +94,15 @@ class ModeAndOverrideTest {
                     - name: BANK_A
                       interfaces:
                       - { endpoint: /pip/ep/a1, index: "1" }
+              - name: plain receiver (suite mode, must not inherit the override)
+                params: { dc_Route: ONE }
+                expect:
+                  receivers:
+                    - name: BANK_A
             """.trimIndent(),
         )
+        // The override case passes only under mode=combined; the second case runs under the suite's
+        // mode=receiver — both passing proves the override is scoped to its own case.
         assertEquals(0, code, output)
     }
 
@@ -116,6 +123,9 @@ class ModeAndOverrideTest {
             """.trimIndent(),
         )
         assertEquals(1, code, output)
-        assertTrue(output.contains("shape") || output.contains("Interfaces"), "shape failure expected: $output")
+        // It must be the SHAPE gate that fails — not the XSD gate. Only non-PASS gates are printed,
+        // so an XSD-valid output leaves no "xsd:" failure line.
+        assertTrue(output.contains("shape:"), "shape-gate failure expected: $output")
+        assertTrue(!output.contains("xsd:"), "XSD gate must pass (output is XSD-valid): $output")
     }
 }

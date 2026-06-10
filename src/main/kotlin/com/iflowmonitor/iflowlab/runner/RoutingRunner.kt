@@ -112,9 +112,10 @@ class RoutingRunner(private val out: Appendable = System.out) {
  * P3, shape-consistency P6, interface-pending P8) without touching the runner loop.
  */
 fun gatesFor(mode: RoutingMode): List<Gate> = when (mode) {
-    // Gate 1 (XSD) + shape-consistency (P6) + gate 2 (selection); all independent (AC20, AC24, AC26).
+    // receiver: XSD (gate 1) + shape-consistency (AC24, receiver-only effect) + selection (gate 2).
     RoutingMode.RECEIVER -> listOf(XsdGate(), ShapeConsistencyGate(), SelectionGate())
-    RoutingMode.COMBINED -> listOf(XsdGate(), ShapeConsistencyGate(), SelectionGate())
+    // combined: nested interfaces are expected, so the shape gate has no effect here — omit it.
+    RoutingMode.COMBINED -> listOf(XsdGate(), SelectionGate())
     // interface mode: standalone Interfaces XSD unsourced (O9) → P8 adds the pending-warning gate.
     RoutingMode.INTERFACE -> listOf(SelectionGate())
 }
