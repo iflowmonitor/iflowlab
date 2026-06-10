@@ -19,3 +19,5 @@ out/
 
 # Org convention
 *-JOURNAL.md
+night-run-status.md
+.worktrees/
