@@ -31,6 +31,8 @@ class SelectionGate : Gate {
             )
         }
 
+        // Keyed by receiver name; routing output has unique receiver names. (P5 widens identity to
+        // (party + name); duplicate bare names would collide here — revisit when party lands.)
         val actualReceivers = Dom.childElementsNamed(root, "Receiver")
             .mapNotNull { r -> nameOf(r)?.let { it to r } }
             .toMap()

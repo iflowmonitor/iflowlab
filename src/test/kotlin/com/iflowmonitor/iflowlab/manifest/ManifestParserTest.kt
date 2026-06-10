@@ -72,4 +72,25 @@ class ManifestParserTest {
         val ex = assertThrows(ManifestException::class.java) { ManifestParser.parse(p) }
         assertTrue(ex.message!!.contains("name"), ex.message)
     }
+
+    /** AC16/AC12 spirit — an interface uses `endpoint`, never a `Service` key. */
+    @Test
+    fun rejectsServiceKeyAtInterfaceLevel() {
+        val p = write(
+            "iface.yaml",
+            """
+            xslt: ./r.xslt
+            mode: combined
+            tests:
+              - name: t
+                expect:
+                  receivers:
+                    - name: BANK_A
+                      interfaces:
+                        - Service: /pip/ep/a1
+            """.trimIndent(),
+        )
+        val ex = assertThrows(ManifestException::class.java) { ManifestParser.parse(p) }
+        assertTrue(ex.message!!.contains("endpoint"), ex.message)
+    }
 }
