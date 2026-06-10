@@ -2,6 +2,9 @@ package com.iflowmonitor.iflowlab.gate
 
 import com.iflowmonitor.iflowlab.model.InterfaceSpec
 import com.iflowmonitor.iflowlab.model.Namespaces
+import com.iflowmonitor.iflowlab.model.NotDeterminedSpec
+import com.iflowmonitor.iflowlab.model.PartySpec
+import com.iflowmonitor.iflowlab.model.ReceiverSpec
 import com.iflowmonitor.iflowlab.xml.Dom
 import org.w3c.dom.Element
 
@@ -45,12 +48,14 @@ class SelectionGate : Gate {
             if (missing.isNotEmpty()) add("missing receiver(s): ${missing.sorted()}")
             if (extra.isNotEmpty()) add("extra receiver(s): ${extra.sorted()}")
 
-            // Per-receiver nested-interface matching (combined mode) for receivers present on both sides.
+            // Per-receiver field matching (party P5, nested interfaces P4) for receivers present on both sides.
             for (exp in ctx.expectation.receivers) {
-                val expectedIfaces = exp.interfaces ?: continue
                 val actualRcv = actualReceivers[exp.name] ?: continue // name already reported as missing
-                addAll(interfaceFindings(exp.name, expectedIfaces, extractInterfaces(actualRcv)))
+                addAll(receiverFieldFindings("receiver '${exp.name}'", exp, actualRcv))
             }
+
+            // notDetermined block (P5): asserted only when declared (AC21/AC22).
+            ctx.expectation.notDetermined?.let { addAll(notDeterminedFindings(it, root)) }
         }
 
         return if (findings.isEmpty()) {
@@ -62,6 +67,66 @@ class SelectionGate : Gate {
 
     private fun nameOf(receiver: Element): String? =
         Dom.firstChildNamed(receiver, "Service")?.let { Dom.textOf(it) }
+
+    /** Field-level checks for a receiver already matched by name: party (P5) + interfaces (P4). */
+    private fun receiverFieldFindings(label: String, exp: ReceiverSpec, actual: Element): List<String> = buildList {
+        exp.party?.let { expectedParty ->
+            val actualParty = partyOf(actual)
+            if (actualParty != expectedParty.toTuple()) {
+                add("$label party mismatch: expected ${show(expectedParty)}, got ${actualParty?.let(::show) ?: "none"}")
+            }
+        }
+        exp.interfaces?.let { addAll(interfaceFindings(exp.name, it, extractInterfaces(actual))) }
+    }
+
+    /** Match a full receiver tuple against an element (name + party + interfaces) — used for defaultReceiver. */
+    private fun receiverTupleFindings(label: String, exp: ReceiverSpec, actual: Element): List<String> = buildList {
+        val actualName = nameOf(actual)
+        if (actualName != exp.name) add("$label name mismatch: expected '${exp.name}', got '${actualName ?: "none"}'")
+        addAll(receiverFieldFindings(label, exp, actual))
+    }
+
+    private fun notDeterminedFindings(nd: NotDeterminedSpec, root: Element): List<String> = buildList {
+        val actualNd = Dom.firstChildNamed(root, "ReceiverNotDetermined")
+        if (actualNd == null) {
+            add("expected a ReceiverNotDetermined block, none was emitted")
+            return@buildList
+        }
+        nd.type?.let { expectedType ->
+            // Exact free-form string compare; NOT enum-validated (AC21).
+            val actualType = Dom.firstChildNamed(actualNd, "Type")?.let { Dom.textOf(it) }
+            if (actualType != expectedType) {
+                add("notDetermined.type mismatch: expected '$expectedType', got '${actualType ?: "none"}'")
+            }
+        }
+        nd.defaultReceiver?.let { expectedDr ->
+            val actualDr = Dom.firstChildNamed(actualNd, "DefaultReceiver")
+            if (actualDr == null) {
+                add("expected a notDetermined.defaultReceiver, none was emitted")
+            } else {
+                addAll(receiverTupleFindings("notDetermined.defaultReceiver", expectedDr, actualDr))
+            }
+        }
+    }
+
+    /** A party tuple; null agency/scheme means the attribute was absent (distinct from empty value). */
+    private data class PartyTuple(val value: String, val agency: String?, val scheme: String?)
+
+    private fun PartySpec.toTuple() = PartyTuple(value, agency, scheme)
+
+    private fun partyOf(receiver: Element): PartyTuple? {
+        val party = Dom.firstChildNamed(receiver, "Party") ?: return null
+        return PartyTuple(
+            value = Dom.textOf(party),
+            agency = party.getAttribute("agency").ifEmpty { null },
+            scheme = party.getAttribute("scheme").ifEmpty { null },
+        )
+    }
+
+    private fun show(p: PartySpec): String = show(p.toTuple())
+
+    private fun show(p: PartyTuple): String =
+        "{value=${p.value}" + (p.agency?.let { ", agency=$it" } ?: "") + (p.scheme?.let { ", scheme=$it" } ?: "") + "}"
 
     /** A full interface tuple; null index/name means the element was absent (distinct from a value). */
     private data class IfaceTuple(val endpoint: String, val index: String?, val name: String?)

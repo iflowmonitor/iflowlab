@@ -9,6 +9,17 @@ package com.iflowmonitor.iflowlab.model
  */
 data class Expectation(
     val receivers: List<ReceiverSpec>,
+    /** Asserted only when declared (P5). Static `ReceiverNotDetermined` output — no runtime simulation. */
+    val notDetermined: NotDeterminedSpec? = null,
+)
+
+/**
+ * The static `ReceiverNotDetermined` assertion (PRD D9). [type] is an exact free-form string compare
+ * (NOT enum-validated); [defaultReceiver] is a full receiver tuple matched like any receiver.
+ */
+data class NotDeterminedSpec(
+    val type: String? = null,
+    val defaultReceiver: ReceiverSpec? = null,
 )
 
 /** A receiver assertion tuple. Identity = [name] (= `Receiver/Service`), or (party + name) when party present. */

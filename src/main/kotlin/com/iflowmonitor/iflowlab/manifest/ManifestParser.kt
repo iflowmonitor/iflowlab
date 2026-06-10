@@ -2,6 +2,8 @@ package com.iflowmonitor.iflowlab.manifest
 
 import com.iflowmonitor.iflowlab.model.Expectation
 import com.iflowmonitor.iflowlab.model.InterfaceSpec
+import com.iflowmonitor.iflowlab.model.NotDeterminedSpec
+import com.iflowmonitor.iflowlab.model.PartySpec
 import com.iflowmonitor.iflowlab.model.ReceiverSpec
 import com.iflowmonitor.iflowlab.model.RoutingMode
 import org.yaml.snakeyaml.Yaml
@@ -89,46 +91,86 @@ object ManifestParser {
     }
 
     private val RECEIVER_KEYS = setOf("name", "party", "interfaces")
+    private val PARTY_KEYS = setOf("value", "agency", "scheme")
+    private val NOT_DETERMINED_KEYS = setOf("type", "defaultReceiver")
 
     private fun parseExpectation(expect: Map<*, *>, caseName: String): Expectation {
         val recvRaw = expect["receivers"] as? List<*> ?: emptyList<Any?>()
         val receivers = recvRaw.mapIndexed { i, r ->
             val rm = r as? Map<*, *>
                 ?: throw ManifestException("test '$caseName' receivers[$i] must be a mapping")
-            val unknown = rm.keys.map { it.toString() } - RECEIVER_KEYS
-            if (unknown.isNotEmpty()) {
-                throw ManifestException(
-                    "test '$caseName' receivers[$i] has unsupported key(s) $unknown; " +
-                        "use 'name' (maps to Receiver/Service) — 'Service' is not a manifest key",
-                )
-            }
-            val nm = rm["name"]?.toString()
-                ?: throw ManifestException("test '$caseName' receivers[$i] is missing 'name'")
-            ReceiverSpec(name = nm, interfaces = parseInterfaces(rm["interfaces"], caseName, i))
+            parseReceiver(rm, caseName, "receivers[$i]")
         }
-        return Expectation(receivers = receivers)
+        return Expectation(
+            receivers = receivers,
+            notDetermined = parseNotDetermined(expect["notDetermined"], caseName),
+        )
+    }
+
+    /** Parse one receiver mapping (used by `receivers[]` and by `notDetermined.defaultReceiver`). */
+    private fun parseReceiver(rm: Map<*, *>, caseName: String, where: String): ReceiverSpec {
+        val unknown = rm.keys.map { it.toString() } - RECEIVER_KEYS
+        if (unknown.isNotEmpty()) {
+            throw ManifestException(
+                "test '$caseName' $where has unsupported key(s) $unknown; " +
+                    "use 'name' (maps to Receiver/Service) — 'Service' is not a manifest key",
+            )
+        }
+        val nm = rm["name"]?.toString()
+            ?: throw ManifestException("test '$caseName' $where is missing 'name'")
+        return ReceiverSpec(
+            name = nm,
+            party = parseParty(rm["party"], caseName, where),
+            interfaces = parseInterfaces(rm["interfaces"], caseName, where),
+        )
+    }
+
+    private fun parseParty(v: Any?, caseName: String, where: String): PartySpec? {
+        if (v == null) return null
+        val m = v as? Map<*, *>
+            ?: throw ManifestException("test '$caseName' $where 'party' must be a mapping")
+        val unknown = m.keys.map { it.toString() } - PARTY_KEYS
+        if (unknown.isNotEmpty()) {
+            throw ManifestException("test '$caseName' $where party has unsupported key(s) $unknown; use value/agency/scheme")
+        }
+        val value = m["value"]?.toString()
+            ?: throw ManifestException("test '$caseName' $where party is missing 'value'")
+        return PartySpec(value = value, agency = m["agency"]?.toString(), scheme = m["scheme"]?.toString())
+    }
+
+    private fun parseNotDetermined(v: Any?, caseName: String): NotDeterminedSpec? {
+        if (v == null) return null
+        val m = v as? Map<*, *>
+            ?: throw ManifestException("test '$caseName' 'notDetermined' must be a mapping")
+        val unknown = m.keys.map { it.toString() } - NOT_DETERMINED_KEYS
+        if (unknown.isNotEmpty()) {
+            throw ManifestException("test '$caseName' notDetermined has unsupported key(s) $unknown; use type/defaultReceiver")
+        }
+        val dr = (m["defaultReceiver"] as? Map<*, *>)?.let { parseReceiver(it, caseName, "notDetermined.defaultReceiver") }
+        // type is a free-form string asserted only when present (NOT enum-validated) — AC21.
+        return NotDeterminedSpec(type = m["type"]?.toString(), defaultReceiver = dr)
     }
 
     private val INTERFACE_KEYS = setOf("endpoint", "index", "name")
 
     /** Nested combined-mode interfaces. null = not asserted; a list (possibly empty) = asserted (P4). */
-    private fun parseInterfaces(v: Any?, caseName: String, ri: Int): List<InterfaceSpec>? {
+    private fun parseInterfaces(v: Any?, caseName: String, where: String): List<InterfaceSpec>? {
         if (v == null) return null
         val list = v as? List<*>
-            ?: throw ManifestException("test '$caseName' receivers[$ri] 'interfaces' must be a list")
+            ?: throw ManifestException("test '$caseName' $where 'interfaces' must be a list")
         return list.mapIndexed { j, iface ->
             val im = iface as? Map<*, *>
-                ?: throw ManifestException("test '$caseName' receivers[$ri] interfaces[$j] must be a mapping")
+                ?: throw ManifestException("test '$caseName' $where interfaces[$j] must be a mapping")
             val unknown = im.keys.map { it.toString() } - INTERFACE_KEYS
             if (unknown.isNotEmpty()) {
                 throw ManifestException(
-                    "test '$caseName' receivers[$ri] interfaces[$j] has unsupported key(s) $unknown; " +
+                    "test '$caseName' $where interfaces[$j] has unsupported key(s) $unknown; " +
                         "use 'endpoint' (maps to Interface/Service), 'index', 'name'",
                 )
             }
             val endpoint = im["endpoint"]?.toString()
                 ?: throw ManifestException(
-                    "test '$caseName' receivers[$ri] interfaces[$j] is missing 'endpoint'",
+                    "test '$caseName' $where interfaces[$j] is missing 'endpoint'",
                 )
             // index is an asserted string VALUE when present (never coerced/required) — PRD §D7.
             InterfaceSpec(endpoint = endpoint, index = im["index"]?.toString(), name = im["name"]?.toString())
