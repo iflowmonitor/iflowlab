@@ -11,6 +11,8 @@ data class Expectation(
     val receivers: List<ReceiverSpec>,
     /** Asserted only when declared (P5). Static `ReceiverNotDetermined` output — no runtime simulation. */
     val notDetermined: NotDeterminedSpec? = null,
+    /** Flat interface assertions for `mode: interface` (P8); null = not asserted. */
+    val interfaces: List<InterfaceSpec>? = null,
 )
 
 /**

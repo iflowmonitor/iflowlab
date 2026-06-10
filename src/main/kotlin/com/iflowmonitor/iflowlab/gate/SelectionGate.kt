@@ -1,6 +1,5 @@
 package com.iflowmonitor.iflowlab.gate
 
-import com.iflowmonitor.iflowlab.model.InterfaceSpec
 import com.iflowmonitor.iflowlab.model.Namespaces
 import com.iflowmonitor.iflowlab.model.NotDeterminedSpec
 import com.iflowmonitor.iflowlab.model.PartySpec
@@ -77,7 +76,11 @@ class SelectionGate : Gate {
                 add("$label party mismatch: expected ${show(expectedParty)}, got ${actualParty?.let(::show) ?: "none"}")
             }
         }
-        exp.interfaces?.let { addAll(interfaceFindings(exp.name, it, extractInterfaces(actual))) }
+        exp.interfaces?.let { expectedIfaces ->
+            val container = Dom.firstChildNamed(actual, "Interfaces")
+            val actualTuples = container?.let { InterfaceMatching.tuplesOf(it) } ?: emptyList()
+            addAll(InterfaceMatching.findings("receiver '${exp.name}'", expectedIfaces, actualTuples))
+        }
     }
 
     /** Match a full receiver tuple against an element (name + party + interfaces) — used for defaultReceiver. */
@@ -128,40 +131,6 @@ class SelectionGate : Gate {
 
     private fun show(p: PartyTuple): String =
         "{value=${p.value}" + (p.agency?.let { ", agency=$it" } ?: "") + (p.scheme?.let { ", scheme=$it" } ?: "") + "}"
-
-    /** A full interface tuple; null index/name means the element was absent (distinct from a value). */
-    private data class IfaceTuple(val endpoint: String, val index: String?, val name: String?)
-
-    private fun InterfaceSpec.toTuple() = IfaceTuple(endpoint, index, name)
-
-    private fun extractInterfaces(receiver: Element): List<IfaceTuple> {
-        val container = Dom.firstChildNamed(receiver, "Interfaces") ?: return emptyList()
-        return Dom.childElementsNamed(container, "Interface").map { iface ->
-            IfaceTuple(
-                endpoint = Dom.firstChildNamed(iface, "Service")?.let { Dom.textOf(it) } ?: "",
-                index = Dom.firstChildNamed(iface, "Index")?.let { Dom.textOf(it) },
-                name = Dom.firstChildNamed(iface, "Name")?.let { Dom.textOf(it) },
-            )
-        }
-    }
-
-    private fun interfaceFindings(
-        receiverName: String,
-        expected: List<InterfaceSpec>,
-        actual: List<IfaceTuple>,
-    ): List<String> {
-        val expectedSet = expected.map { it.toTuple() }.toSet()
-        val actualSet = actual.toSet()
-        val missing = expectedSet - actualSet
-        val extra = actualSet - expectedSet
-        return buildList {
-            if (missing.isNotEmpty()) add("receiver '$receiverName' missing interface(s): ${missing.map(::show)}")
-            if (extra.isNotEmpty()) add("receiver '$receiverName' extra interface(s): ${extra.map(::show)}")
-        }
-    }
-
-    private fun show(t: IfaceTuple): String =
-        "{endpoint=${t.endpoint}" + (t.index?.let { ", index=$it" } ?: "") + (t.name?.let { ", name=$it" } ?: "") + "}"
 
     companion object {
         const val NAME = "selection"

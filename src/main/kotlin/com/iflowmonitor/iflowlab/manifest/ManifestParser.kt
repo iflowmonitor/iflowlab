@@ -104,6 +104,8 @@ object ManifestParser {
         return Expectation(
             receivers = receivers,
             notDetermined = parseNotDetermined(expect["notDetermined"], caseName),
+            // Flat interface assertions for mode: interface (P8).
+            interfaces = parseInterfaces(expect["interfaces"], caseName, "expect"),
         )
     }
 

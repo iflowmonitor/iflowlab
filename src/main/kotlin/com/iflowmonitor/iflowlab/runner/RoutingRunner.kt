@@ -6,6 +6,8 @@ import com.iflowmonitor.iflowlab.gate.Gate
 import com.iflowmonitor.iflowlab.gate.GateContext
 import com.iflowmonitor.iflowlab.gate.GateOutcome
 import com.iflowmonitor.iflowlab.gate.GateResult
+import com.iflowmonitor.iflowlab.gate.InterfaceSelectionGate
+import com.iflowmonitor.iflowlab.gate.InterfaceXsdPendingGate
 import com.iflowmonitor.iflowlab.gate.SelectionGate
 import com.iflowmonitor.iflowlab.gate.ShapeConsistencyGate
 import com.iflowmonitor.iflowlab.gate.XsdGate
@@ -116,6 +118,6 @@ fun gatesFor(mode: RoutingMode): List<Gate> = when (mode) {
     RoutingMode.RECEIVER -> listOf(XsdGate(), ShapeConsistencyGate(), SelectionGate())
     // combined: nested interfaces are expected, so the shape gate has no effect here — omit it.
     RoutingMode.COMBINED -> listOf(XsdGate(), SelectionGate())
-    // interface mode: standalone Interfaces XSD unsourced (O9) → P8 adds the pending-warning gate.
-    RoutingMode.INTERFACE -> listOf(SelectionGate())
+    // interface mode: Interfaces XSD unsourced (O9) → pending-warning gate + flat interface selection (AC25).
+    RoutingMode.INTERFACE -> listOf(InterfaceXsdPendingGate(), InterfaceSelectionGate())
 }
