@@ -66,10 +66,13 @@ class RoutingRunner(private val out: Appendable = System.out) {
 
             val passed = results.none { it.failed }
             if (!passed) anyFail = true
-            printCase(tc.name, xslt, passed, results)
+            printCase(tc.name, xslt, passed, results, headerOnly = isHeaderOnly(tc))
         }
         return if (anyFail) EXIT_FAIL else EXIT_OK
     }
+
+    /** A case declaring neither `body:` nor `bodyFile:` is header-only — the dummy body is injected (AC8). */
+    private fun isHeaderOnly(tc: TestCase): Boolean = tc.body == null && tc.bodyFile == null
 
     private fun resolveBody(tc: TestCase, baseDir: Path): String = when {
         tc.body != null -> tc.body
@@ -77,8 +80,16 @@ class RoutingRunner(private val out: Appendable = System.out) {
         else -> DUMMY_BODY
     }
 
-    private fun printCase(name: String, xslt: String, passed: Boolean, results: List<GateResult>) {
-        out.appendLine("${if (passed) "PASS" else "FAIL"}  $name  [stylesheet: $xslt]")
+    private fun printCase(
+        name: String,
+        xslt: String,
+        passed: Boolean,
+        results: List<GateResult>,
+        headerOnly: Boolean,
+    ) {
+        // AC9 — make the dummy-body substitution visible, not silent.
+        val label = if (headerOnly) "  header-only (dummy body)" else ""
+        out.appendLine("${if (passed) "PASS" else "FAIL"}  $name  [stylesheet: $xslt]$label")
         for (r in results) {
             if (r.outcome != GateOutcome.PASS) {
                 out.appendLine("      ${r.outcome} ${r.gateName}: ${r.message}")
