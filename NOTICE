@@ -1,0 +1,14 @@
+iflowlab
+Copyright 2026 iFlowMonitor s.r.o.
+
+This product is licensed under the Apache License, Version 2.0 (the "License");
+you may not use this product except in compliance with the License. A copy of
+the License is provided in the LICENSE file and is also available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product bundles the following third-party components at runtime, each under
+its own license (retained here for attribution; not a sublicense):
+
+  - Saxon-HE (net.sf.saxon:Saxon-HE) — Mozilla Public License 2.0 — © Saxonica Limited
+  - SnakeYAML (org.yaml:snakeyaml) — Apache License 2.0 — © the SnakeYAML contributors
