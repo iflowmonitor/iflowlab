@@ -34,8 +34,9 @@ class SelectionGate : Gate {
             )
         }
 
-        // Keyed by receiver name; routing output has unique receiver names. (P5 widens identity to
-        // (party + name); duplicate bare names would collide here — revisit when party lands.)
+        // Keyed by receiver name. Party (P5) is asserted as a field AFTER name-pairing, not folded
+        // into the key — so two receivers sharing a name but differing only by party would collide
+        // here (rare in routing output; would need a composite key to fully honour D8's (Party+Service)).
         val actualReceivers = Dom.childElementsNamed(root, "Receiver")
             .mapNotNull { r -> nameOf(r)?.let { it to r } }
             .toMap()
