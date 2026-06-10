@@ -10,6 +10,7 @@ import com.iflowmonitor.iflowlab.gate.SelectionGate
 import com.iflowmonitor.iflowlab.manifest.ManifestException
 import com.iflowmonitor.iflowlab.manifest.ManifestParser
 import com.iflowmonitor.iflowlab.manifest.TestCase
+import com.iflowmonitor.iflowlab.model.Namespaces
 import com.iflowmonitor.iflowlab.model.RoutingMode
 import java.nio.file.Files
 import java.nio.file.Path
@@ -52,7 +53,7 @@ class RoutingRunner(private val out: Appendable = System.out) {
                     mode = mode,
                     emitted = emitted.doc,
                     expectation = tc.expectation,
-                    namespaces = manifest.namespaces + tc.namespaces,
+                    namespaces = Namespaces.effective(manifest.namespaces, tc.namespaces),
                 )
                 gatesFor(mode).map { it.evaluate(ctx) }
             } catch (e: Exception) {
