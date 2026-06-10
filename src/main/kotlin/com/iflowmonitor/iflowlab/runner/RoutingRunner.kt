@@ -7,6 +7,7 @@ import com.iflowmonitor.iflowlab.gate.GateContext
 import com.iflowmonitor.iflowlab.gate.GateOutcome
 import com.iflowmonitor.iflowlab.gate.GateResult
 import com.iflowmonitor.iflowlab.gate.SelectionGate
+import com.iflowmonitor.iflowlab.gate.XsdGate
 import com.iflowmonitor.iflowlab.manifest.ManifestException
 import com.iflowmonitor.iflowlab.manifest.ManifestParser
 import com.iflowmonitor.iflowlab.manifest.TestCase
@@ -99,7 +100,9 @@ class RoutingRunner(private val out: Appendable = System.out) {
  * P3, shape-consistency P6, interface-pending P8) without touching the runner loop.
  */
 fun gatesFor(mode: RoutingMode): List<Gate> = when (mode) {
-    RoutingMode.RECEIVER -> listOf(SelectionGate())
-    RoutingMode.COMBINED -> listOf(SelectionGate())
+    // Gate 1 (XSD) + gate 2 (selection), both independent, both must pass (AC20, AC26).
+    RoutingMode.RECEIVER -> listOf(XsdGate(), SelectionGate())
+    RoutingMode.COMBINED -> listOf(XsdGate(), SelectionGate())
+    // interface mode: standalone Interfaces XSD unsourced (O9) → P8 adds the pending-warning gate.
     RoutingMode.INTERFACE -> listOf(SelectionGate())
 }
