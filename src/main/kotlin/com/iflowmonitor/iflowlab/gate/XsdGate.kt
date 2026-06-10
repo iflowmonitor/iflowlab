@@ -42,6 +42,10 @@ class XsdGate : Gate {
             validator.validate(DOMSource(ctx.emitted))
         } catch (e: SAXParseException) {
             errors.add(format(e))
+        } catch (e: Exception) {
+            // validate() also declares SAXException + IOException; attribute them to the XSD gate
+            // rather than letting them surface as a generic "engine error".
+            errors.add(e.message ?: e.javaClass.simpleName)
         }
 
         return if (errors.isEmpty()) {
