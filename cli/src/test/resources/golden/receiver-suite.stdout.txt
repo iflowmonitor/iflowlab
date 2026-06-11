@@ -1,0 +1,3 @@
+PASS  routes to BANK_A  [stylesheet: receiver-determination.xslt]  header-only (dummy body)
+PASS  routes to both (order-insensitive)  [stylesheet: receiver-determination.xslt]  header-only (dummy body)
+PASS  header-only routing (dummy body injected)  [stylesheet: receiver-determination.xslt]  header-only (dummy body)
