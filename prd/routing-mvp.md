@@ -397,7 +397,6 @@ or a matched/failed assertion).
   O1/O3/O4/O5/O6/O8/O10 (this PRD's source).
 - **Reference prototype** (read-only): `C:\Users\pavol\Documents\iflowmonitor\` — earlier
   iFlowMonitor prototype.
-- **Reference architecture:** `C:\Users\pavol\Documents\Projekty\qamelo-io\`.
 - **Official SAP artefacts:** the **Cloud Integration Pipeline - Templates** package —
   "Pipeline v2 Template Step04 - Custom Receiver Determination" (source of `Receivers.xsd` and the
   exact dummy-body knowledge) and the expected Step05 template (source of the standalone Interfaces

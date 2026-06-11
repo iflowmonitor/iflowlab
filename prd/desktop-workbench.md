@@ -419,8 +419,7 @@ return value, an exit code, or an on-screen label/state).
   SwingPanel interop is first-class; `compose.desktop` Gradle DSL with `:desktop:run` and
   `packageDistributionForCurrentOS`; Compose's read-only `codeviewer` example as rendering prior art
   (a viewer, not an editor).
-- **Reference architecture / prototype (read-only):** `C:\Users\pavol\Documents\Projekty\qamelo-io\`
-  and `C:\Users\pavol\Documents\iflowmonitor\`.
+- **Reference prototype (read-only):** `C:\Users\pavol\Documents\iflowmonitor\`.
 
 ## Out of Scope
 
