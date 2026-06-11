@@ -1,22 +1,22 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 
-/** P7 — header-only cases: dummy-body injection (AC8) and the explicit runner label (AC9). */
+/** P7 — header-only cases: dummy-body injection (AC8) and the explicit header-only flag (AC9). */
 class HeaderOnlyTest {
 
     @TempDir
     lateinit var dir: Path
 
-    /** AC8 + AC9 — a case with neither body nor bodyFile runs (no missing-input error) and is labelled. */
+    /** AC8 + AC9 — a case with neither body nor bodyFile runs (no missing-input error) and is flagged. */
     @Test
-    fun headerOnlyCaseRunsAndIsLabelled() {
+    fun headerOnlyCaseRunsAndIsFlagged() {
         Files.copy(fixture("header-only.xslt").toPath(), dir.resolve("r.xslt"))
         val m = Files.writeString(
             dir.resolve("suite.yaml"),
@@ -31,17 +31,15 @@ class HeaderOnlyTest {
                     - name: HEADER_RCV
             """.trimIndent(),
         )
-        val sb = StringBuilder()
-        val code = RoutingRunner(sb).run(m)
-        val output = sb.toString()
+        val case = RoutingRunner().run(m).cases.single()
 
-        assertEquals(0, code, output)
-        assertTrue(output.contains("header-only (dummy body)"), "case must be labelled header-only: $output")
+        assertTrue(case.passed, "$case")
+        assertTrue(case.headerOnly, "case must be flagged header-only: $case")
     }
 
-    /** A case WITH an inline body must NOT carry the header-only label. */
+    /** A case WITH an inline body must NOT carry the header-only flag. */
     @Test
-    fun bodyCaseIsNotLabelledHeaderOnly() {
+    fun bodyCaseIsNotFlaggedHeaderOnly() {
         Files.copy(fixture("header-only.xslt").toPath(), dir.resolve("r.xslt"))
         val m = Files.writeString(
             dir.resolve("suite.yaml"),
@@ -57,8 +55,7 @@ class HeaderOnlyTest {
                     - name: HEADER_RCV
             """.trimIndent(),
         )
-        val sb = StringBuilder()
-        RoutingRunner(sb).run(m)
-        assertTrue(!sb.toString().contains("header-only (dummy body)"), sb.toString())
+        val case = RoutingRunner().run(m).cases.single()
+        assertFalse(case.headerOnly, "$case")
     }
 }

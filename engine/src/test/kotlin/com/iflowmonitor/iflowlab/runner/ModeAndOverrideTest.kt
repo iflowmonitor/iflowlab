@@ -2,6 +2,9 @@ package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -18,17 +21,16 @@ class ModeAndOverrideTest {
         Files.copy(fixture(fixtureName).toPath(), dir.resolve(asName))
     }
 
-    private fun run(content: String): Pair<Int, String> {
+    private fun run(content: String): SuiteResult {
         val m = Files.writeString(dir.resolve("suite.yaml"), content)
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(m) to sb.toString()
+        return RoutingRunner().run(m)
     }
 
-    /** AC3 — no resolvable mode (neither suite nor test) fails non-zero with a "mode required" message. */
+    /** AC3 — no resolvable mode (neither suite nor test) fails the case with a "mode required" engineError. */
     @Test
     fun missingModeFailsWithExplicitMessage() {
         seed("receiver-route.xslt", "r.xslt")
-        val (code, output) = run(
+        val result = run(
             """
             xslt: r.xslt
             tests:
@@ -39,16 +41,20 @@ class ModeAndOverrideTest {
                     - name: BANK_A
             """.trimIndent(),
         )
-        assertTrue(code != 0, "missing mode must be non-zero: $output")
-        assertTrue(output.contains("mode required"), "explicit message expected: $output")
+        assertNull(result.configError, "a missing mode is a case failure, not a config error")
+        val case = result.cases.single()
+        assertFalse(case.passed, "missing mode must fail the case: $result")
+        assertNotNull(case.engineError)
+        assertTrue(case.engineError!!.contains("mode required"), "explicit message expected: $case")
+        assertNull(case.xslt, "no stylesheet was executed for a binding-error case")
     }
 
-    /** AC13 — a per-test `xslt` override replaces the suite binding for that case only; reflected in output. */
+    /** AC13 — a per-test `xslt` override replaces the suite binding for that case only; reflected per case. */
     @Test
-    fun perTestXsltOverrideReflectedInOutput() {
+    fun perTestXsltOverrideReflectedPerCase() {
         seed("receiver-route.xslt", "route.xslt")
         seed("receiver-echo.xslt", "echo.xslt")
-        val (code, output) = run(
+        val result = run(
             """
             xslt: route.xslt
             mode: receiver
@@ -66,9 +72,9 @@ class ModeAndOverrideTest {
                     - name: OVERRIDE_RCV
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
-        assertTrue(output.contains("[stylesheet: route.xslt]"), output)
-        assertTrue(output.contains("[stylesheet: echo.xslt]"), output)
+        assertTrue(result.cases.all { it.passed }, "$result")
+        assertEquals("route.xslt", result.cases[0].xslt)
+        assertEquals("echo.xslt", result.cases[1].xslt)
     }
 
     /**
@@ -80,7 +86,7 @@ class ModeAndOverrideTest {
     fun perTestModeOverrideDrivesGateSelection() {
         seed("receiver-route.xslt", "route.xslt")
         seed("combined-route.xslt", "combined.xslt")
-        val (code, output) = run(
+        val result = run(
             """
             xslt: route.xslt
             mode: receiver
@@ -103,14 +109,14 @@ class ModeAndOverrideTest {
         )
         // The override case passes only under mode=combined; the second case runs under the suite's
         // mode=receiver — both passing proves the override is scoped to its own case.
-        assertEquals(0, code, output)
+        assertTrue(result.cases.all { it.passed }, "$result")
     }
 
     /** AC24 — mode=receiver FAILS (shape-consistency) when nested <Interfaces> are emitted, despite XSD-valid. */
     @Test
     fun receiverModeFailsOnNestedInterfaces() {
         seed("combined-route.xslt", "r.xslt")
-        val (code, output) = run(
+        val result = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -122,10 +128,10 @@ class ModeAndOverrideTest {
                     - name: BANK_A
             """.trimIndent(),
         )
-        assertEquals(1, code, output)
-        // It must be the SHAPE gate that fails — not the XSD gate. Only non-PASS gates are printed,
-        // so an XSD-valid output leaves no "xsd:" failure line.
-        assertTrue(output.contains("shape:"), "shape-gate failure expected: $output")
-        assertTrue(!output.contains("xsd:"), "XSD gate must pass (output is XSD-valid): $output")
+        val case = result.cases.single()
+        assertFalse(case.passed, "$result")
+        // It must be the SHAPE gate that fails — not the XSD gate (the output is XSD-valid).
+        assertTrue(case.gateResults.any { it.gateName == "shape" && it.failed }, "shape-gate failure expected: $case")
+        assertTrue(case.gateResults.none { it.gateName == "xsd" && it.failed }, "XSD gate must pass (output is XSD-valid): $case")
     }
 }

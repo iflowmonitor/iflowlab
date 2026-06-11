@@ -1,7 +1,6 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -18,21 +17,20 @@ class XsdGateRunnerTest {
         Files.copy(fixture(fixtureName).toPath(), dir.resolve(asName))
     }
 
-    private fun run(content: String): Pair<Int, String> {
+    private fun run(content: String): SuiteResult {
         val m = Files.writeString(dir.resolve("suite.yaml"), content)
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(m) to sb.toString()
+        return RoutingRunner().run(m)
     }
 
     /**
      * AC20 — non-conformant output fails the XSD gate INDEPENDENTLY of selection: the case expects
      * zero receivers (selection passes, since the malformed Receiver emits no Service/name), yet the
-     * XSD gate fails it → non-zero exit, with the XSD failure visible.
+     * XSD gate fails it → case not passed, with the XSD failure recorded.
      */
     @Test
     fun malformedOutputFailsXsdIndependentlyOfSelection() {
         seed("malformed-receiver.xslt", "r.xslt")
-        val (code, output) = run(
+        val result = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -42,15 +40,16 @@ class XsdGateRunnerTest {
                   receivers: []
             """.trimIndent(),
         )
-        assertEquals(1, code, output)
-        assertTrue(output.contains("xsd"), "XSD gate failure should be reported: $output")
+        val case = result.cases.single()
+        assertTrue(!case.passed, "XSD-invalid output must fail the case: $result")
+        assertTrue(case.gateResults.any { it.gateName == "xsd" && it.failed }, "XSD gate failure should be recorded: $result")
     }
 
-    /** A conformant routing output passes both gates → exit 0 (XSD gate does not break the happy path). */
+    /** A conformant routing output passes both gates (XSD gate does not break the happy path). */
     @Test
     fun conformantOutputPassesBothGates() {
         seed("receiver-route.xslt", "r.xslt")
-        val (code, output) = run(
+        val result = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -63,6 +62,6 @@ class XsdGateRunnerTest {
                     - name: BANK_B
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(result.cases.single().passed, "conformant output must pass: $result")
     }
 }

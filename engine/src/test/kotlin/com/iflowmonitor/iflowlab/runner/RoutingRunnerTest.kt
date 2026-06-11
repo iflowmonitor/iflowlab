@@ -1,7 +1,8 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -20,15 +21,11 @@ class RoutingRunnerTest {
 
     private fun writeManifest(content: String): Path = Files.writeString(dir.resolve("suite.yaml"), content)
 
-    private fun run(manifest: Path): Pair<Int, String> {
-        val sb = StringBuilder()
-        val code = RoutingRunner(sb).run(manifest)
-        return code to sb.toString()
-    }
+    private fun run(manifest: Path): SuiteResult = RoutingRunner().run(manifest)
 
-    /** AC2 + AC26 (zero) + AC27 — relative xslt resolves against the manifest dir; all-pass exits 0. */
+    /** AC2 + AC26 (zero) + AC27 — relative xslt resolves against the manifest dir; all cases pass. */
     @Test
-    fun allPassExitsZeroAndNamesStylesheet() {
+    fun allPassAndEachCaseNamesItsStylesheet() {
         seedStylesheet()
         val m = writeManifest(
             """
@@ -48,14 +45,15 @@ class RoutingRunnerTest {
                     - name: BANK_B
             """.trimIndent(),
         )
-        val (code, output) = run(m)
-        assertEquals(0, code, output)
-        assertTrue(output.contains("[stylesheet: r.xslt]"), "runner output should name the stylesheet: $output")
+        val result = run(m)
+        assertNull(result.configError)
+        assertTrue(result.cases.all { it.passed }, "all cases must pass: $result")
+        assertTrue(result.cases.all { it.xslt == "r.xslt" }, "each case should name the stylesheet: $result")
     }
 
-    /** AC26 — any failing case exits non-zero (1). */
+    /** AC26 — any failing case makes the suite fail (a case with a failed gate is not passed). */
     @Test
-    fun anyFailureExitsNonZero() {
+    fun anyFailureMakesSuiteFail() {
         seedStylesheet()
         val m = writeManifest(
             """
@@ -70,16 +68,19 @@ class RoutingRunnerTest {
                     - name: BANK_B
             """.trimIndent(),
         )
-        val (code, output) = run(m)
-        assertEquals(1, code, output)
-        assertTrue(output.contains("FAIL"), output)
+        val result = run(m)
+        assertTrue(result.cases.any { !it.passed }, "a failing case must surface: $result")
+        val case = result.cases.single()
+        assertNull(case.engineError, "this is a gate failure, not an engine error")
+        assertTrue(case.gateResults.any { it.failed }, "a failed gate must be recorded: $result")
     }
 
-    /** AC1 — a non-YAML manifest yields the config exit code (2). */
+    /** AC1 — a non-YAML manifest yields a configError with no cases. */
     @Test
-    fun badManifestExitsConfigCode() {
+    fun badManifestYieldsConfigError() {
         val m = writeManifest("this: is: not: valid: {[}")
-        val (code, _) = run(m)
-        assertEquals(2, code)
+        val result = run(m)
+        assertNotNull(result.configError)
+        assertTrue(result.cases.isEmpty())
     }
 }

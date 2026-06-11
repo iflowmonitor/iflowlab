@@ -1,7 +1,6 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -14,10 +13,7 @@ import java.nio.file.Path
  */
 class PathResolutionTest {
 
-    private fun run(manifest: Path): Pair<Int, String> {
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(manifest) to sb.toString()
-    }
+    private fun run(manifest: Path): SuiteResult = RoutingRunner().run(manifest)
 
     private fun seed(dir: Path, fixtureName: String, asName: String) {
         Files.copy(fixture(fixtureName).toPath(), dir.resolve(asName))
@@ -41,8 +37,8 @@ class PathResolutionTest {
                     - name: Order
             """.trimIndent(),
         )
-        val (code, output) = run(m)
-        assertEquals(0, code, output)
+        val result = run(m)
+        assertTrue(result.cases.single().passed, "$result")
     }
 
     /** Inline `body:` is fed to the stylesheet verbatim. */
@@ -62,8 +58,8 @@ class PathResolutionTest {
                     - name: Invoice
             """.trimIndent(),
         )
-        val (code, output) = run(m)
-        assertEquals(0, code, output)
+        val result = run(m)
+        assertTrue(result.cases.single().passed, "$result")
     }
 
     /**
@@ -100,11 +96,11 @@ class PathResolutionTest {
                 expect: { receivers: [ { name: BANK_A }, { name: BANK_B } ] }
             """.trimIndent(),
         )
-        val (codeA, outA) = run(a)
-        val (codeB, outB) = run(b)
-        assertEquals(0, codeA, outA)
-        assertEquals(0, codeB, outB)
+        val resultA = run(a)
+        val resultB = run(b)
+        assertTrue(resultA.cases.single().passed, "$resultA")
+        assertTrue(resultB.cases.single().passed, "$resultB")
         // Both resolved their own dir's stylesheet even though neither file sits in the process CWD.
-        assertTrue(outA.contains("[stylesheet: r.xslt]") && outB.contains("[stylesheet: r.xslt]"))
+        assertTrue(resultA.cases.single().xslt == "r.xslt" && resultB.cases.single().xslt == "r.xslt")
     }
 }

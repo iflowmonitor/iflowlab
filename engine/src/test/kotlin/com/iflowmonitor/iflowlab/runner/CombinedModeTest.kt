@@ -1,7 +1,8 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -13,7 +14,7 @@ class CombinedModeTest {
     @TempDir
     lateinit var dir: Path
 
-    private fun run(index: String, expectInterfaces: String): Pair<Int, String> {
+    private fun run(index: String, expectInterfaces: String): CaseResult {
         Files.copy(fixture("combined-route.xslt").toPath(), dir.resolve("r.xslt"))
         val m = Files.writeString(
             dir.resolve("suite.yaml"),
@@ -30,42 +31,41 @@ class CombinedModeTest {
             $expectInterfaces
             """.trimIndent(),
         )
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(m) to sb.toString()
+        return RoutingRunner().run(m).cases.single()
     }
 
     /** AC16 — receiver with a nested interface (endpoint + index) matches the emitted tuple. */
     @Test
     fun nestedInterfaceWithIndexMatches() {
-        val (code, output) = run("yes", "          - { endpoint: /pip/ep/a1, index: \"1\" }")
-        assertEquals(0, code, output)
+        val case = run("yes", "          - { endpoint: /pip/ep/a1, index: \"1\" }")
+        assertTrue(case.passed, "$case")
     }
 
     /** AC18 — expected endpoint with NO index matches an emitted Interface that omits Index. */
     @Test
     fun interfaceWithoutIndexMatchesOmittedIndex() {
-        val (code, output) = run("no", "          - { endpoint: /pip/ep/a1 }")
-        assertEquals(0, code, output)
+        val case = run("no", "          - { endpoint: /pip/ep/a1 }")
+        assertTrue(case.passed, "$case")
     }
 
     /** AC19 — expected index but actual omits Index → fail. */
     @Test
     fun expectedIndexButActualOmitsFails() {
-        val (code, _) = run("no", "          - { endpoint: /pip/ep/a1, index: \"1\" }")
-        assertEquals(1, code)
+        val case = run("no", "          - { endpoint: /pip/ep/a1, index: \"1\" }")
+        assertFalse(case.passed, "$case")
     }
 
     /** AC19 (vice versa) — actual emits Index but expected omits → fail. */
     @Test
     fun actualIndexButExpectedOmitsFails() {
-        val (code, _) = run("yes", "          - { endpoint: /pip/ep/a1 }")
-        assertEquals(1, code)
+        val case = run("yes", "          - { endpoint: /pip/ep/a1 }")
+        assertFalse(case.passed, "$case")
     }
 
     /** A wrong endpoint fails (endpoint is the interface identity). */
     @Test
     fun wrongEndpointFails() {
-        val (code, _) = run("yes", "          - { endpoint: /pip/ep/WRONG, index: \"1\" }")
-        assertEquals(1, code)
+        val case = run("yes", "          - { endpoint: /pip/ep/WRONG, index: \"1\" }")
+        assertFalse(case.passed, "$case")
     }
 }

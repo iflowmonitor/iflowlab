@@ -1,7 +1,8 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -17,17 +18,16 @@ class NamespaceAndParamTest {
         Files.copy(fixture(fixtureName).toPath(), dir.resolve(asName))
     }
 
-    private fun run(content: String): Pair<Int, String> {
+    private fun run(content: String): CaseResult {
         val m = Files.writeString(dir.resolve("suite.yaml"), content)
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(m) to sb.toString()
+        return RoutingRunner().run(m).cases.single()
     }
 
     /** AC5 — a YAML int param (`dc_Priority: 1`) reaches Saxon as the string "1". */
     @Test
     fun yamlIntParamCoercedToString() {
         seed("param-echo.xslt", "r.xslt")
-        val (code, output) = run(
+        val case = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -39,14 +39,14 @@ class NamespaceAndParamTest {
                     - name: "1"
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC5 — a YAML bool param (`dc_Priority: true`) reaches Saxon as the string "true". */
     @Test
     fun yamlBoolParamCoercedToString() {
         seed("param-echo.xslt", "r.xslt")
-        val (code, output) = run(
+        val case = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -58,14 +58,14 @@ class NamespaceAndParamTest {
                     - name: "true"
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC7 — with no `namespaces:` declared, ns0 is pre-registered to the SAP URI and resolves. */
     @Test
     fun ns0PreRegisteredWhenUndeclared() {
         seed("receiver-route.xslt", "r.xslt")
-        val (code, output) = run(
+        val case = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -77,14 +77,14 @@ class NamespaceAndParamTest {
                     - name: BANK_A
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC6 — a per-case `namespaces` entry overrides ns0; observable via the custom-namespace root. */
     @Test
     fun perCaseNs0OverrideApplies() {
         seed("receiver-custom-ns.xslt", "r.xslt")
-        val (code, output) = run(
+        val case = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -96,14 +96,14 @@ class NamespaceAndParamTest {
                     - name: BANK_A
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC6 control — without the override, the default ns0 (SAP) does NOT match the custom root → fail. */
     @Test
     fun withoutOverrideCustomRootFails() {
         seed("receiver-custom-ns.xslt", "r.xslt")
-        val (code, _) = run(
+        val case = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -114,14 +114,14 @@ class NamespaceAndParamTest {
                     - name: BANK_A
             """.trimIndent(),
         )
-        assertEquals(1, code)
+        assertFalse(case.passed, "$case")
     }
 
     /** AC15 — a suite-level ns0 mapping, not overridden per-case, stays in effect for the case. */
     @Test
     fun suiteLevelNamespaceRemainsInEffect() {
         seed("receiver-custom-ns.xslt", "r.xslt")
-        val (code, output) = run(
+        val case = run(
             """
             xslt: r.xslt
             mode: receiver
@@ -133,6 +133,6 @@ class NamespaceAndParamTest {
                     - name: BANK_A
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 }

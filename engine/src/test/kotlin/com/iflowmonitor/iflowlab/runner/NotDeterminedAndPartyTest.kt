@@ -1,7 +1,8 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -13,17 +14,16 @@ class NotDeterminedAndPartyTest {
     @TempDir
     lateinit var dir: Path
 
-    private fun run(fixtureName: String, manifestBody: String): Pair<Int, String> {
+    private fun run(fixtureName: String, manifestBody: String): CaseResult {
         Files.copy(fixture(fixtureName).toPath(), dir.resolve("r.xslt"))
         val m = Files.writeString(dir.resolve("suite.yaml"), "xslt: r.xslt\nmode: receiver\n$manifestBody")
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(m) to sb.toString()
+        return RoutingRunner().run(m).cases.single()
     }
 
     /** AC21 — a Type value outside {Error,Ignore,Default} that matches the emitted string passes (no enum check). */
     @Test
     fun freeFormNotDeterminedTypePasses() {
-        val (code, output) = run(
+        val case = run(
             "notdetermined-route.xslt",
             """
             tests:
@@ -35,13 +35,13 @@ class NotDeterminedAndPartyTest {
                     type: Wibble
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC21 — a Type that does NOT match the emitted string fails (exact compare). */
     @Test
     fun mismatchedNotDeterminedTypeFails() {
-        val (code, _) = run(
+        val case = run(
             "notdetermined-route.xslt",
             """
             tests:
@@ -53,13 +53,13 @@ class NotDeterminedAndPartyTest {
                     type: Ignore
             """.trimIndent(),
         )
-        assertEquals(1, code)
+        assertFalse(case.passed, "$case")
     }
 
     /** AC22 — defaultReceiver matched as a full receiver tuple (here by name FALLBACK). */
     @Test
     fun defaultReceiverFullTupleMatches() {
-        val (code, output) = run(
+        val case = run(
             "notdetermined-route.xslt",
             """
             tests:
@@ -72,13 +72,13 @@ class NotDeterminedAndPartyTest {
                     defaultReceiver: { name: FALLBACK }
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC22 — a wrong defaultReceiver name fails. */
     @Test
     fun defaultReceiverWrongNameFails() {
-        val (code, _) = run(
+        val case = run(
             "notdetermined-route.xslt",
             """
             tests:
@@ -90,13 +90,13 @@ class NotDeterminedAndPartyTest {
                     defaultReceiver: { name: NOT_FALLBACK }
             """.trimIndent(),
         )
-        assertEquals(1, code)
+        assertFalse(case.passed, "$case")
     }
 
     /** AC23 — expecting zero receivers passes when none are emitted. */
     @Test
     fun zeroReceiversPassesWhenNoneEmitted() {
-        val (code, output) = run(
+        val case = run(
             "notdetermined-route.xslt",
             """
             tests:
@@ -106,13 +106,13 @@ class NotDeterminedAndPartyTest {
                   receivers: []
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** AC23 — expecting zero receivers fails when a receiver IS emitted. */
     @Test
     fun zeroReceiversFailsWhenAnyEmitted() {
-        val (code, _) = run(
+        val case = run(
             "receiver-route.xslt",
             """
             tests:
@@ -122,13 +122,13 @@ class NotDeterminedAndPartyTest {
                   receivers: []
             """.trimIndent(),
         )
-        assertEquals(1, code)
+        assertFalse(case.passed, "$case")
     }
 
     /** Party is part of receiver identity: a full party tuple matches the emitted Party. */
     @Test
     fun partyTupleMatches() {
-        val (code, output) = run(
+        val case = run(
             "party-route.xslt",
             """
             tests:
@@ -139,13 +139,13 @@ class NotDeterminedAndPartyTest {
                       party: { value: PARTY_V, agency: A1, scheme: S1 }
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 
     /** A wrong party value fails. */
     @Test
     fun partyValueMismatchFails() {
-        val (code, _) = run(
+        val case = run(
             "party-route.xslt",
             """
             tests:
@@ -156,6 +156,6 @@ class NotDeterminedAndPartyTest {
                       party: { value: WRONG, agency: A1, scheme: S1 }
             """.trimIndent(),
         )
-        assertEquals(1, code)
+        assertFalse(case.passed, "$case")
     }
 }

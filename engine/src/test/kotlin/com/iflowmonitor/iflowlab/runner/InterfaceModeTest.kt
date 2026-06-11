@@ -1,7 +1,7 @@
 package com.iflowmonitor.iflowlab.runner
 
 import com.iflowmonitor.iflowlab.fixture
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -14,17 +14,18 @@ class InterfaceModeTest {
     @TempDir
     lateinit var dir: Path
 
-    private fun run(manifestBody: String): Pair<Int, String> {
+    private fun run(manifestBody: String): CaseResult {
         Files.copy(fixture("interface-route.xslt").toPath(), dir.resolve("r.xslt"))
         val m = Files.writeString(dir.resolve("suite.yaml"), "xslt: r.xslt\nmode: interface\n$manifestBody")
-        val sb = StringBuilder()
-        return RoutingRunner(sb).run(m) to sb.toString()
+        return RoutingRunner().run(m).cases.single()
     }
 
-    /** AC25 — interface-mode run applies the assertion gate AND emits the literal "XSD gate pending (O9)" warning. */
+    private fun warningsOf(case: CaseResult): List<String> = case.gateResults.flatMap { it.warnings }
+
+    /** AC25 — interface-mode run applies the assertion gate AND carries the literal "XSD gate pending (O9)" warning. */
     @Test
     fun interfaceModeAppliesAssertionGateAndWarnsXsdPending() {
-        val (code, output) = run(
+        val case = run(
             """
             tests:
               - name: flat interfaces
@@ -34,14 +35,17 @@ class InterfaceModeTest {
                     - { endpoint: /pip/ep/i1, index: "1", name: IF_1 }
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
-        assertTrue(output.contains("XSD gate pending (O9)"), "O9 warning must be emitted, never silently skipped: $output")
+        assertTrue(case.passed, "$case")
+        assertTrue(
+            warningsOf(case).any { it.contains("XSD gate pending (O9)") },
+            "O9 warning must be carried, never silently skipped: $case",
+        )
     }
 
     /** The assertion gate genuinely runs: a wrong endpoint fails the interface-mode case. */
     @Test
     fun interfaceSelectionMismatchFails() {
-        val (code, output) = run(
+        val case = run(
             """
             tests:
               - name: wrong endpoint
@@ -51,15 +55,15 @@ class InterfaceModeTest {
                     - { endpoint: /pip/ep/WRONG, index: "1", name: IF_1 }
             """.trimIndent(),
         )
-        assertEquals(1, code)
-        // The warning is still emitted even on a failing case (gate never silently skipped).
-        assertTrue(output.contains("XSD gate pending (O9)"), output)
+        assertFalse(case.passed, "$case")
+        // The warning is still carried even on a failing case (gate never silently skipped).
+        assertTrue(warningsOf(case).any { it.contains("XSD gate pending (O9)") }, "$case")
     }
 
     /** Interface identity is endpoint-anchored: omitting index matches an Interface that omits Index. */
     @Test
     fun interfaceWithoutIndexMatchesOmittedIndex() {
-        val (code, output) = run(
+        val case = run(
             """
             tests:
               - name: no index
@@ -69,6 +73,6 @@ class InterfaceModeTest {
                     - { endpoint: /pip/ep/i1, name: IF_1 }
             """.trimIndent(),
         )
-        assertEquals(0, code, output)
+        assertTrue(case.passed, "$case")
     }
 }
