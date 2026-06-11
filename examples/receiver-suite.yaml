@@ -1,5 +1,5 @@
 # Example routing-test suite for iflowlab.
-# Run from the project root:  ./gradlew run --args="examples/receiver-suite.yaml"
+# Run from the project root:  ./gradlew :cli:run --args="examples/receiver-suite.yaml"
 # Exit code 0 = all cases pass; 1 = a case failed; 2 = config error.
 xslt: receiver-determination.xslt   # resolved relative to THIS file's directory
 mode: receiver
