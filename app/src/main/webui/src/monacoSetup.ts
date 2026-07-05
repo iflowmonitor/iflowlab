@@ -1,4 +1,7 @@
-import * as monaco from "monaco-editor";
+// Minimal Monaco: the core editor API only (no built-in languages/workers for
+// TS/JSON/CSS/HTML). Groovy highlighting is our own Monarch grammar, which needs
+// no worker — so this drops the multi-MB all-languages bundle. See groovyLang.ts.
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { registerGroovy } from "./groovyLang";
