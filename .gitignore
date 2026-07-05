@@ -17,6 +17,13 @@ gradle-app.setting
 *.iws
 out/
 
+# Maven
+target/
+
+# Node / frontend build
+node_modules/
+app/src/main/webui/dist/
+
 # Org convention
 *-JOURNAL.md
 night-run-status.md
