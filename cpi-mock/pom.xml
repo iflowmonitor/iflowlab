@@ -14,13 +14,9 @@
   <name>iflowlab :: cpi-mock</name>
   <description>Clean-room mock of the SAP CPI Message API (com.sap.gateway.ip.core.customdev.util)</description>
 
-  <!-- No framework, no Groovy. Plain Java, isolated-testable against oracles (R11). -->
+  <!-- No framework, no Groovy, no external activation jar: we ship our own clean-room
+       javax.activation.DataHandler. Plain Java, isolated-testable against oracles (R11). -->
   <dependencies>
-    <!-- javax.activation.DataHandler for the attachment API (CPI is javax, not jakarta). -->
-    <dependency>
-      <groupId>com.sun.activation</groupId>
-      <artifactId>javax.activation</artifactId>
-    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

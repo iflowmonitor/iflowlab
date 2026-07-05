@@ -34,8 +34,6 @@
     <junit.version>5.14.2</junit.version>
     <assertj.version>3.27.6</assertj.version>
     <snakeyaml.version>2.6</snakeyaml.version>
-    <!-- javax.activation.DataHandler — removed from the JDK; CPI (Camel 3.14) is still javax. -->
-    <activation.version>1.2.0</activation.version>
   </properties>
 
   <dependencyManagement>
@@ -95,11 +93,6 @@
         <groupId>org.assertj</groupId>
         <artifactId>assertj-core</artifactId>
         <version>${assertj.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.sun.activation</groupId>
-        <artifactId>javax.activation</artifactId>
-        <version>${activation.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
