@@ -2,9 +2,12 @@
 // TS/JSON/CSS/HTML). Groovy highlighting is our own Monarch grammar, which needs
 // no worker — so this drops the multi-MB all-languages bundle. See groovyLang.ts.
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
-// The editor.api trim drops most contributions; pull the suggest widget/controller
-// back in explicitly so our completion provider (cpiCompletions) can surface (slice 6).
+// The editor.api trim drops most contributions; pull back the ones we rely on.
+// Suggest widget/controller for cpiCompletions (slice 6):
 import "monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController";
+// Marker squiggle rendering + hover tooltips for fidelity lint markers (slice 7):
+import "monaco-editor/esm/vs/editor/browser/services/markerDecorations";
+import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { registerGroovy } from "./groovyLang";

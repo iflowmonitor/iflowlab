@@ -5,6 +5,7 @@ import {
   getMessage,
   getScript,
   getWorkspace,
+  lintScript,
   runAllCases,
   runCase,
   runScript,
@@ -103,9 +104,46 @@ export function App() {
   const [variables, setVariables] = useState<Variable[]>([]);
   const [debugOutput, setDebugOutput] = useState("");
 
+  const [findings, setFindings] = useState<import("./types").Finding[]>([]);
+
   useEffect(() => {
     getWorkspace().then(setWorkspace).catch(() => setWorkspace(null));
   }, []);
+
+  // Live fidelity lint (slice 7): debounced, Groovy only; surfaced as Monaco markers.
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    const editor = editorRef.current;
+    if (!monaco || !editor) return;
+    const model = editor.getModel();
+    if (kind !== "groovy") {
+      monaco.editor.setModelMarkers(model, "fidelity", []);
+      setFindings([]);
+      return;
+    }
+    const handle = setTimeout(() => {
+      lintScript(script)
+        .then((fs) => {
+          setFindings(fs);
+          const sev = (s: string) =>
+            s === "ERROR" ? monaco.MarkerSeverity.Error : s === "INFO" ? monaco.MarkerSeverity.Info : monaco.MarkerSeverity.Warning;
+          monaco.editor.setModelMarkers(
+            model,
+            "fidelity",
+            fs.map((f) => ({
+              startLineNumber: f.line,
+              startColumn: f.column,
+              endLineNumber: f.line,
+              endColumn: f.endColumn,
+              message: `${f.message} [${f.rule}]`,
+              severity: sev(f.severity),
+            })),
+          );
+        })
+        .catch(() => {});
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [script, kind]);
 
   const onEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -435,6 +473,16 @@ export function App() {
               }}
             />
           </div>
+          {kind === "groovy" && findings.length > 0 && (
+            <div className="findings">
+              <div className="findingshead">⚠ {findings.length} fidelity {findings.length === 1 ? "warning" : "warnings"}</div>
+              {findings.map((f, i) => (
+                <div className="findingrow" key={i}>
+                  <span className="findingline">L{f.line}</span> {f.message}
+                </div>
+              ))}
+            </div>
+          )}
 
           <Picker label="Message" options={workspace?.messages ?? []} onPick={loadMessage} placeholder="load a message fixture…" />
           <label className="fieldlabel">Body</label>

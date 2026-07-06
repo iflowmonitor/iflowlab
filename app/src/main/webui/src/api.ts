@@ -1,4 +1,4 @@
-import type { CaseReport, MessageFixture, RunCase, RunRequest, RunResult, WorkspaceInfo } from "./types";
+import type { CaseReport, Finding, MessageFixture, RunCase, RunRequest, RunResult, WorkspaceInfo } from "./types";
 
 export async function runScript(req: RunRequest): Promise<RunResult> {
   const res = await fetch("/run", {
@@ -77,5 +77,15 @@ export async function runCase(runCase: RunCase): Promise<CaseReport> {
 export async function runAllCases(): Promise<CaseReport[]> {
   const res = await fetch("/case/run-all", { method: "POST" });
   if (!res.ok) throw new Error(`run all: HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function lintScript(script: string): Promise<Finding[]> {
+  const res = await fetch("/lint", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ script }),
+  });
+  if (!res.ok) throw new Error(`lint: HTTP ${res.status}`);
   return res.json();
 }
