@@ -51,6 +51,31 @@ class RunResourceTest {
     }
 
     @Test
+    void runEndpoint_acceptsInlineServices_forStatelessRunners() {
+        String script =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                        + "import com.sap.it.api.ITApiFactory\n"
+                        + "import com.sap.it.api.securestore.SecureStoreService\n"
+                        + "Message processData(Message message) {\n"
+                        + "    def store = ITApiFactory.getService(SecureStoreService.class, null)\n"
+                        + "    message.setBody(store.getUserCredential('Api').getUsername())\n"
+                        + "    return message\n"
+                        + "}\n";
+
+        given().contentType("application/json")
+                .body(Map.of(
+                        "script", script,
+                        "body", "x",
+                        "services", Map.of("credentials", Map.of("Api", Map.of("username", "inline-user", "password", "pw")))))
+                .when()
+                .post("/run")
+                .then()
+                .statusCode(200)
+                .body("status", is("OK"))
+                .body("body.inline", is("inline-user"));
+    }
+
+    @Test
     void runEndpoint_timesOut_onRunawayScript() {
         String script =
                 "import com.sap.gateway.ip.core.customdev.util.Message\n"

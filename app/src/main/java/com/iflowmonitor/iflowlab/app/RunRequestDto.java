@@ -19,15 +19,25 @@ public record RunRequestDto(
         Map<String, Object> properties,
         Long timeoutMs,
         String kind,
-        List<AttachmentDto> attachments) {
+        List<AttachmentDto> attachments,
+        ServicesDto services) {
 
     public record AttachmentDto(String name, String body, String contentType) {}
+
+    /** Back-compat: request without inline services (local product). */
+    public RunRequestDto(
+            String script, String body, String contentType, Map<String, Object> headers,
+            Map<String, Object> properties, Long timeoutMs, String kind, List<AttachmentDto> attachments) {
+        this(script, body, contentType, headers, properties, timeoutMs, kind, attachments, null);
+    }
 
     RunRequest toRunRequest() {
         return toRunRequest(null);
     }
 
-    RunRequest toRunRequest(CpiServices services) {
+    /** Inline services (stateless runner) take precedence over the workspace fallback. */
+    RunRequest toRunRequest(CpiServices fallback) {
+        CpiServices effective = services != null ? services.toCpiServices() : fallback;
         List<AttachmentInput> atts = attachments == null ? List.of() : attachments.stream()
                 .filter(a -> a.name() != null && !a.name().isBlank())
                 .map(a -> new AttachmentInput(
@@ -43,7 +53,7 @@ public record RunRequestDto(
                 properties,
                 List.of(),
                 timeoutMs == null ? 0L : timeoutMs,
-                services,
+                effective,
                 atts);
     }
 }

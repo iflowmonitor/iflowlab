@@ -37,7 +37,13 @@ public class CaseRunner {
     }
 
     public CaseReport run(RunCase runCase) {
-        String script = workspace.readScript(runCase.script());
+        // Inline script/services (stateless runner, SaaS R1) win over workspace resolution.
+        String script = runCase.scriptText() != null && !runCase.scriptText().isBlank()
+                ? runCase.scriptText()
+                : workspace.readScript(runCase.script());
+        var services = runCase.services() != null
+                ? runCase.services().toCpiServices()
+                : workspace.readServices();
         MessageSpec msg = runCase.message();
         byte[] body = (msg == null || msg.body() == null ? "" : msg.body()).getBytes(StandardCharsets.UTF_8);
         RunRequest request = new RunRequest(
@@ -48,7 +54,7 @@ public class CaseRunner {
                 msg == null ? null : msg.properties(),
                 List.of(),
                 0L,
-                workspace.readServices());
+                services);
 
         RunResult result = engine.run(request);
         List<AssertionResult> verdicts = evaluator.evaluate(result, runCase.assertions());
