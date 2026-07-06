@@ -47,7 +47,8 @@ public class CaseRunner {
                 msg == null ? null : msg.headers(),
                 msg == null ? null : msg.properties(),
                 List.of(),
-                0L);
+                0L,
+                workspace.readServices());
 
         RunResult result = engine.run(request);
         List<AssertionResult> verdicts = evaluator.evaluate(result, runCase.assertions());

@@ -4,6 +4,7 @@ import io.quarkus.websockets.next.OnClose;
 import io.quarkus.websockets.next.OnOpen;
 import io.quarkus.websockets.next.OnTextMessage;
 import io.quarkus.websockets.next.OpenConnections;
+import com.iflowmonitor.iflowlab.app.WorkspaceService;
 import io.quarkus.websockets.next.WebSocket;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.inject.Inject;
@@ -41,10 +42,13 @@ public class DebugSocket {
     @Inject
     OpenConnections openConnections;
 
+    @Inject
+    WorkspaceService workspace;
+
     @OnOpen
     public void onOpen() {
         String id = connection.id();
-        SESSIONS.put(id, new DapDebugSession(json -> send(id, json), ASYNC));
+        SESSIONS.put(id, new DapDebugSession(json -> send(id, json), ASYNC, workspace::readServices));
     }
 
     private void send(String connectionId, String json) {

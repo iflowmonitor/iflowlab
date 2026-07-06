@@ -1,5 +1,6 @@
 package com.iflowmonitor.iflowlab.engine;
 
+import com.iflowmonitor.iflowlab.cpimock.services.CpiServices;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,6 +9,8 @@ import java.util.Map;
 /**
  * One workbench run: a script plus the input Message to feed it. Engine-agnostic
  * (D2) — the same request drives the plain run engine now and the debug engine later.
+ * {@code services} seeds the CPI platform-service mocks (value mapping, secure store)
+ * the engine binds for the run; null means none are available.
  */
 public record RunRequest(
         String script,
@@ -16,7 +19,8 @@ public record RunRequest(
         Map<String, Object> headers,
         Map<String, Object> properties,
         List<java.net.URL> extraClasspath,
-        long timeoutMs) {
+        long timeoutMs,
+        CpiServices services) {
 
     public RunRequest {
         headers = headers == null ? Map.of() : new LinkedHashMap<>(headers);
@@ -25,6 +29,18 @@ public record RunRequest(
         if (timeoutMs <= 0) {
             timeoutMs = 10_000L;
         }
+    }
+
+    /** Back-compat constructor without CPI services (binds none). */
+    public RunRequest(
+            String script,
+            byte[] body,
+            String contentType,
+            Map<String, Object> headers,
+            Map<String, Object> properties,
+            List<java.net.URL> extraClasspath,
+            long timeoutMs) {
+        this(script, body, contentType, headers, properties, extraClasspath, timeoutMs, null);
     }
 
     /** Convenience for tests: a text body, no headers/properties, default timeout. */

@@ -1,5 +1,6 @@
 package com.iflowmonitor.iflowlab.app;
 
+import com.iflowmonitor.iflowlab.cpimock.services.CpiServices;
 import com.iflowmonitor.iflowlab.engine.RunRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -18,6 +19,10 @@ public record RunRequestDto(
         Long timeoutMs) {
 
     RunRequest toRunRequest() {
+        return toRunRequest(null);
+    }
+
+    RunRequest toRunRequest(CpiServices services) {
         return new RunRequest(
                 script,
                 body == null ? null : body.getBytes(StandardCharsets.UTF_8),
@@ -25,6 +30,7 @@ public record RunRequestDto(
                 headers,
                 properties,
                 List.of(),
-                timeoutMs == null ? 0L : timeoutMs);
+                timeoutMs == null ? 0L : timeoutMs,
+                services);
     }
 }

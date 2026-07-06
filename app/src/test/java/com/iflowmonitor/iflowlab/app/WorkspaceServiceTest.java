@@ -105,4 +105,39 @@ class WorkspaceServiceTest {
         RunCase bad = new RunCase("../evil", "X.groovy", new MessageSpec("", null, Map.of(), Map.of()), List.of());
         assertThatThrownBy(() -> svc.saveCase(bad)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void readsServices_fromServicesYaml(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("services.yaml"),
+                "valueMappings:\n"
+                        + "  - sourceAgency: C4C\n"
+                        + "    sourceIdentifier: Country\n"
+                        + "    sourceValue: yMKT\n"
+                        + "    targetAgency: Country\n"
+                        + "    targetIdentifier: Austria\n"
+                        + "    value: AT\n"
+                        + "credentials:\n"
+                        + "  MyAlias:\n"
+                        + "    username: user1\n"
+                        + "    password: secret1\n");
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+
+        var registry = svc.readServices().registry();
+        var vm = (com.sap.it.api.mapping.ValueMappingApi) registry.get(com.sap.it.api.mapping.ValueMappingApi.class);
+        var store = (com.sap.it.api.securestore.SecureStoreService) registry.get(com.sap.it.api.securestore.SecureStoreService.class);
+
+        assertThat(vm.getMappedValue("C4C", "Country", "yMKT", "Country", "Austria")).isEqualTo("AT");
+        var cred = store.getUserCredential("MyAlias");
+        assertThat(cred.getUsername()).isEqualTo("user1");
+        assertThat(new String(cred.getPassword())).isEqualTo("secret1");
+    }
+
+    @Test
+    void readServices_missingFile_returnsEmpty(@TempDir Path ws) {
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+        assertThat(svc.readServices().registry()).isNotEmpty(); // instances present…
+        var vm = (com.sap.it.api.mapping.ValueMappingApi)
+                svc.readServices().registry().get(com.sap.it.api.mapping.ValueMappingApi.class);
+        assertThat(vm.getMappedValue("a", "b", "c", "d", "e")).isNull(); // …but they resolve nothing
+    }
 }

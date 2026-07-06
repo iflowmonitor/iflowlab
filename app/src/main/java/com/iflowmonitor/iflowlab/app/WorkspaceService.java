@@ -2,6 +2,8 @@ package com.iflowmonitor.iflowlab.app;
 
 import com.iflowmonitor.iflowlab.app.cases.MessageSpec;
 import com.iflowmonitor.iflowlab.app.cases.RunCase;
+import com.iflowmonitor.iflowlab.cpimock.services.CpiServices;
+import com.iflowmonitor.iflowlab.cpimock.services.ValueMappingEntry;
 import com.iflowmonitor.iflowlab.engine.assertions.Assertion;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -255,6 +257,50 @@ public class WorkspaceService {
             }
         }
         return new RunCase(name, script, message, assertions);
+    }
+
+    /**
+     * The CPI platform-service mocks seeded from {@code services.yaml} at the workspace
+     * root (value mappings + secure-store credentials). Absent file → no services (slice 4).
+     */
+    @SuppressWarnings("unchecked")
+    public CpiServices readServices() {
+        Path file = root.resolve("services.yaml");
+        if (!Files.isRegularFile(file)) {
+            return CpiServices.EMPTY;
+        }
+        Map<String, Object> meta = new Yaml().load(read(file));
+        if (meta == null) {
+            return CpiServices.EMPTY;
+        }
+
+        List<ValueMappingEntry> valueMappings = new ArrayList<>();
+        if (meta.get("valueMappings") instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> m) {
+                    Map<String, Object> vm = (Map<String, Object>) m;
+                    valueMappings.add(new ValueMappingEntry(
+                            str(vm, "sourceAgency"), str(vm, "sourceIdentifier"), str(vm, "sourceValue"),
+                            str(vm, "targetAgency"), str(vm, "targetIdentifier"), str(vm, "value")));
+                }
+            }
+        }
+
+        Map<String, String[]> credentials = new LinkedHashMap<>();
+        if (meta.get("credentials") instanceof Map<?, ?> creds) {
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) creds).entrySet()) {
+                if (e.getValue() instanceof Map<?, ?> up) {
+                    Map<String, Object> upm = (Map<String, Object>) up;
+                    credentials.put(e.getKey(), new String[] {str(upm, "username"), str(upm, "password")});
+                }
+            }
+        }
+        return new CpiServices(valueMappings, credentials);
+    }
+
+    private static String str(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        return v == null ? "" : v.toString();
     }
 
     private Path resolve(String relPath) {

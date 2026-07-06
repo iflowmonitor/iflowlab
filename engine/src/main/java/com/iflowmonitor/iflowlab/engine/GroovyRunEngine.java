@@ -81,10 +81,18 @@ public final class GroovyRunEngine implements Engine {
             binding.setVariable("messageLogFactory", logFactory);
             // Groovy Script.println prefers a bound "out" over System.out — per-run capture.
             binding.setVariable("out", new PrintStream(stdout, true, StandardCharsets.UTF_8));
-            GroovyShell shell = new GroovyShell(classLoader(request), binding, compilerConfig());
-            Script script = shell.parse(request.script());
-            Object out = script.invokeMethod("processData", message);
-            return out instanceof Message m ? m : message;
+            // Bind CPI platform-service mocks (ITApiFactory) on this worker thread only.
+            if (request.services() != null) {
+                com.sap.it.api.ITApiFactory.bind(request.services().registry());
+            }
+            try {
+                GroovyShell shell = new GroovyShell(classLoader(request), binding, compilerConfig());
+                Script script = shell.parse(request.script());
+                Object out = script.invokeMethod("processData", message);
+                return out instanceof Message m ? m : message;
+            } finally {
+                com.sap.it.api.ITApiFactory.unbind();
+            }
         };
     }
 
