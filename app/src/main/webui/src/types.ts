@@ -22,6 +22,20 @@ export interface ExceptionInfo {
   stackTrace: string | null;
 }
 
+export interface AttachmentView {
+  name: string;
+  contentType: string | null;
+  size: number;
+  inline: string;
+  truncated: boolean;
+}
+
+export interface AttachmentSpec {
+  name: string;
+  body: string;
+  contentType: string | null;
+}
+
 export interface RunResult {
   status: Status;
   body: BodyView | null;
@@ -30,6 +44,7 @@ export interface RunResult {
   propertiesBefore: Record<string, unknown>;
   propertiesAfter: Record<string, unknown>;
   logs: LogLine[];
+  attachments: AttachmentView[];
   exception: ExceptionInfo | null;
 }
 
@@ -43,6 +58,7 @@ export interface RunRequest {
   properties: Record<string, unknown>;
   timeoutMs?: number;
   kind?: EngineKind;
+  attachments?: AttachmentSpec[];
 }
 
 export interface WorkspaceInfo {
@@ -58,6 +74,7 @@ export interface MessageFixture {
   contentType: string | null;
   headers: Record<string, unknown>;
   properties: Record<string, unknown>;
+  attachments: AttachmentSpec[];
 }
 
 // --- run-cases / assertions (slice 3) ---

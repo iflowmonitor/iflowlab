@@ -116,7 +116,41 @@ public final class GroovyRunEngine implements Engine {
         m.setBody(request.body());
         request.headers().forEach(m::setHeader);
         request.properties().forEach(m::setProperty);
+        if (!request.attachments().isEmpty()) {
+            Map<String, javax.activation.DataHandler> atts = new LinkedHashMap<>();
+            for (AttachmentInput a : request.attachments()) {
+                atts.put(a.name(), new javax.activation.DataHandler(
+                        a.content() == null ? new byte[0] : a.content(), a.contentType()));
+            }
+            m.setAttachments(atts);
+        }
         return m;
+    }
+
+    private static List<RunResult.AttachmentView> attachments(Message out) {
+        Map<String, javax.activation.DataHandler> atts = out.getAttachments();
+        if (atts == null || atts.isEmpty()) {
+            return List.of();
+        }
+        List<RunResult.AttachmentView> views = new ArrayList<>();
+        for (Map.Entry<String, javax.activation.DataHandler> e : atts.entrySet()) {
+            byte[] bytes = attachmentBytes(e.getValue());
+            RunResult.BodyType type = BodyTypeClassifier.classify(bytes, e.getValue().getContentType());
+            boolean truncated = bytes.length > INLINE_CAP_BYTES;
+            byte[] shown = truncated ? java.util.Arrays.copyOf(bytes, INLINE_CAP_BYTES) : bytes;
+            String inline = type == RunResult.BodyType.BINARY ? hexPreview(shown) : new String(shown, StandardCharsets.UTF_8);
+            views.add(new RunResult.AttachmentView(e.getKey(), e.getValue().getContentType(), bytes.length, inline, truncated));
+        }
+        return views;
+    }
+
+    private static byte[] attachmentBytes(javax.activation.DataHandler handler) {
+        try (java.io.InputStream in = handler.getInputStream()) {
+            return in == null ? new byte[0] : in.readAllBytes();
+        } catch (Exception e) {
+            Object content = handler.getContent();
+            return content == null ? new byte[0] : String.valueOf(content).getBytes(StandardCharsets.UTF_8);
+        }
     }
 
     private static RunResult success(
@@ -127,7 +161,7 @@ public final class GroovyRunEngine implements Engine {
         RunResult.BodyView view = bodyView(bytes, contentType, type);
         return new RunResult(
                 RunResult.Status.OK, view, headersBefore, snapshot(out.getHeaders()),
-                propertiesBefore, snapshot(out.getProperties()), logs, null);
+                propertiesBefore, snapshot(out.getProperties()), logs, attachments(out), null);
     }
 
     private static RunResult terminal(

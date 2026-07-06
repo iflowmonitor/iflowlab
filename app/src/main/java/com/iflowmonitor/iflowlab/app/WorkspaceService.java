@@ -78,9 +78,16 @@ public class WorkspaceService {
         }
     }
 
-    /** Persists a {@code messages/<name>/} fixture: a body file (extension by content-type) + message.yaml (R5). */
+    /** Back-compat: save a fixture with no attachments. */
     public void saveMessage(
             String name, String body, String contentType, Map<String, Object> headers, Map<String, Object> properties) {
+        saveMessage(name, body, contentType, headers, properties, List.of());
+    }
+
+    /** Persists a {@code messages/<name>/} fixture: a body file + message.yaml + attachment files (R5, slice 8). */
+    public void saveMessage(
+            String name, String body, String contentType, Map<String, Object> headers, Map<String, Object> properties,
+            List<MessageFixture.Attachment> attachments) {
         validateName(name);
         Path dir = resolve("messages/" + name);
         try {
@@ -94,6 +101,24 @@ public class WorkspaceService {
             }
             meta.put("headers", headers == null ? Map.of() : headers);
             meta.put("properties", properties == null ? Map.of() : properties);
+
+            List<MessageFixture.Attachment> atts = attachments == null ? List.of() : attachments;
+            if (!atts.isEmpty()) {
+                Path attDir = dir.resolve("attachments");
+                Files.createDirectories(attDir);
+                List<Map<String, Object>> attMeta = new ArrayList<>();
+                for (MessageFixture.Attachment a : atts) {
+                    validateName(a.name());
+                    Files.writeString(attDir.resolve(a.name()), a.body() == null ? "" : a.body(), StandardCharsets.UTF_8);
+                    Map<String, Object> am = new LinkedHashMap<>();
+                    am.put("name", a.name());
+                    if (a.contentType() != null && !a.contentType().isBlank()) {
+                        am.put("contentType", a.contentType());
+                    }
+                    attMeta.add(am);
+                }
+                meta.put("attachments", attMeta);
+            }
 
             DumperOptions opts = new DumperOptions();
             opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
@@ -137,6 +162,7 @@ public class WorkspaceService {
         String contentType = null;
         Map<String, Object> headers = new LinkedHashMap<>();
         Map<String, Object> properties = new LinkedHashMap<>();
+        List<MessageFixture.Attachment> attachments = new ArrayList<>();
         Path metaFile = dir.resolve("message.yaml");
         if (Files.isRegularFile(metaFile)) {
             Map<String, Object> meta = new Yaml().load(read(metaFile));
@@ -148,9 +174,24 @@ public class WorkspaceService {
                 if (meta.get("properties") instanceof Map<?, ?> pr) {
                     ((Map<String, Object>) pr).forEach(properties::put);
                 }
+                if (meta.get("attachments") instanceof List<?> list) {
+                    Path attDir = dir.resolve("attachments");
+                    for (Object item : list) {
+                        if (item instanceof Map<?, ?> a) {
+                            Map<String, Object> am = (Map<String, Object>) a;
+                            String attName = am.get("name") == null ? null : am.get("name").toString();
+                            if (attName != null) {
+                                Path attFile = attDir.resolve(attName);
+                                String attBody = Files.isRegularFile(attFile) ? read(attFile) : "";
+                                String attCt = am.get("contentType") == null ? null : am.get("contentType").toString();
+                                attachments.add(new MessageFixture.Attachment(attName, attBody, attCt));
+                            }
+                        }
+                    }
+                }
             }
         }
-        return new MessageFixture(name, body, contentType, headers, properties);
+        return new MessageFixture(name, body, contentType, headers, properties, attachments);
     }
 
     private static Path findBodyFile(Path dir) {

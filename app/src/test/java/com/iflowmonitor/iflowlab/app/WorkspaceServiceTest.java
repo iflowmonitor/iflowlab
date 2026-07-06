@@ -100,6 +100,21 @@ class WorkspaceServiceTest {
     }
 
     @Test
+    void savesFixtureWithAttachments_thenReadsThemBack(@TempDir Path ws) {
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+        svc.saveMessage("withatt", "main body", "text/plain", Map.of(), Map.of(),
+                List.of(new MessageFixture.Attachment("invoice.xml", "<inv/>", "application/xml")));
+
+        assertThat(Files.exists(ws.resolve("messages/withatt/attachments/invoice.xml"))).isTrue();
+        MessageFixture fx = svc.readMessage("withatt");
+        assertThat(fx.attachments()).singleElement().satisfies(a -> {
+            assertThat(a.name()).isEqualTo("invoice.xml");
+            assertThat(a.body()).isEqualTo("<inv/>");
+            assertThat(a.contentType()).isEqualTo("application/xml");
+        });
+    }
+
+    @Test
     void saveCase_rejectsBadName(@TempDir Path ws) {
         WorkspaceService svc = new WorkspaceService(ws.toString());
         RunCase bad = new RunCase("../evil", "X.groovy", new MessageSpec("", null, Map.of(), Map.of()), List.of());

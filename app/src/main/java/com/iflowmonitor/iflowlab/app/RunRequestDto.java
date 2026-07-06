@@ -1,6 +1,7 @@
 package com.iflowmonitor.iflowlab.app;
 
 import com.iflowmonitor.iflowlab.cpimock.services.CpiServices;
+import com.iflowmonitor.iflowlab.engine.AttachmentInput;
 import com.iflowmonitor.iflowlab.engine.RunRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -17,13 +18,23 @@ public record RunRequestDto(
         Map<String, Object> headers,
         Map<String, Object> properties,
         Long timeoutMs,
-        String kind) {
+        String kind,
+        List<AttachmentDto> attachments) {
+
+    public record AttachmentDto(String name, String body, String contentType) {}
 
     RunRequest toRunRequest() {
         return toRunRequest(null);
     }
 
     RunRequest toRunRequest(CpiServices services) {
+        List<AttachmentInput> atts = attachments == null ? List.of() : attachments.stream()
+                .filter(a -> a.name() != null && !a.name().isBlank())
+                .map(a -> new AttachmentInput(
+                        a.name(),
+                        a.body() == null ? new byte[0] : a.body().getBytes(StandardCharsets.UTF_8),
+                        a.contentType()))
+                .toList();
         return new RunRequest(
                 script,
                 body == null ? null : body.getBytes(StandardCharsets.UTF_8),
@@ -32,6 +43,7 @@ public record RunRequestDto(
                 properties,
                 List.of(),
                 timeoutMs == null ? 0L : timeoutMs,
-                services);
+                services,
+                atts);
     }
 }

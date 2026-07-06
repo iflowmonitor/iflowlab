@@ -20,18 +20,33 @@ public record RunRequest(
         Map<String, Object> properties,
         List<java.net.URL> extraClasspath,
         long timeoutMs,
-        CpiServices services) {
+        CpiServices services,
+        List<AttachmentInput> attachments) {
 
     public RunRequest {
         headers = headers == null ? Map.of() : new LinkedHashMap<>(headers);
         properties = properties == null ? Map.of() : new LinkedHashMap<>(properties);
         extraClasspath = extraClasspath == null ? List.of() : List.copyOf(extraClasspath);
+        attachments = attachments == null ? List.of() : List.copyOf(attachments);
         if (timeoutMs <= 0) {
             timeoutMs = 10_000L;
         }
     }
 
-    /** Back-compat constructor without CPI services (binds none). */
+    /** Back-compat: with CPI services, no input attachments. */
+    public RunRequest(
+            String script,
+            byte[] body,
+            String contentType,
+            Map<String, Object> headers,
+            Map<String, Object> properties,
+            List<java.net.URL> extraClasspath,
+            long timeoutMs,
+            CpiServices services) {
+        this(script, body, contentType, headers, properties, extraClasspath, timeoutMs, services, List.of());
+    }
+
+    /** Back-compat: no CPI services, no input attachments. */
     public RunRequest(
             String script,
             byte[] body,
@@ -40,7 +55,7 @@ public record RunRequest(
             Map<String, Object> properties,
             List<java.net.URL> extraClasspath,
             long timeoutMs) {
-        this(script, body, contentType, headers, properties, extraClasspath, timeoutMs, null);
+        this(script, body, contentType, headers, properties, extraClasspath, timeoutMs, null, List.of());
     }
 
     /** Convenience for tests: a text body, no headers/properties, default timeout. */
