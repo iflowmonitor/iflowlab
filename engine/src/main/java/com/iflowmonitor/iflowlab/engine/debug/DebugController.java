@@ -24,6 +24,7 @@ import org.codehaus.groovy.control.CompilerConfiguration;
 public final class DebugController {
 
     private final Set<Integer> breakpoints = new HashSet<>();
+    private final Set<String> watches = new HashSet<>();
     private final ByteArrayOutputStream stdout = new ByteArrayOutputStream();
     private final CapturingMessageLogFactory logFactory = new CapturingMessageLogFactory();
 
@@ -39,10 +40,20 @@ public final class DebugController {
         }
     }
 
+    /** Data breakpoints: stop when any of these locals changes value. */
+    public void setDataBreakpoints(Set<String> names) {
+        watches.clear();
+        watches.addAll(names);
+        if (session != null) {
+            session.setWatches(watches);
+        }
+    }
+
     /** Compile + start the script on a worker thread. Returns immediately (script runs until first stop). */
     public void launch(RunRequest request) {
         session = new DebugSession();
         session.setBreakpoints(breakpoints);
+        session.setWatches(watches);
 
         Message message = new Message();
         message.setBody(request.body());
@@ -124,6 +135,16 @@ public final class DebugController {
 
     public int currentLine() {
         return session == null ? 0 : session.currentLine();
+    }
+
+    /** Why the run last paused: "breakpoint", "step", or "data breakpoint". */
+    public String stopReason() {
+        return session == null ? "" : session.stopReason();
+    }
+
+    /** For a data breakpoint pause, the name of the local that changed (else ""). */
+    public String stopDetail() {
+        return session == null ? "" : session.stopDetail();
     }
 
     /** Call-stack frames, innermost first (valid while paused). */

@@ -101,6 +101,7 @@ public final class DapDebugSession {
                 ObjectNode caps = mapper.createObjectNode();
                 caps.put("supportsConfigurationDoneRequest", true);
                 caps.put("supportsTerminateRequest", true);
+                caps.put("supportsDataBreakpoints", true);
                 respond(reqSeq, command, caps);
                 event("initialized", null);
             }
@@ -121,6 +122,40 @@ public final class DapDebugSession {
                 respond(reqSeq, command, body);
             }
             case "configurationDone" -> respond(reqSeq, command, null);
+            case "dataBreakpointInfo" -> {
+                // The client asks whether a variable can be watched; we key the data
+                // breakpoint by the variable name itself (returned as dataId).
+                String name = args.hasNonNull("name") ? args.path("name").asText() : "";
+                ObjectNode body = mapper.createObjectNode();
+                if (name.isBlank()) {
+                    body.set("dataId", mapper.nullNode());
+                    body.put("description", "no variable");
+                } else {
+                    body.put("dataId", name);
+                    body.put("description", name + " (break on value change)");
+                    body.putArray("accessTypes").add("write");
+                    body.put("canPersist", false);
+                }
+                respond(reqSeq, command, body);
+            }
+            case "setDataBreakpoints" -> {
+                Set<String> names = new java.util.LinkedHashSet<>();
+                ArrayNode verified = mapper.createArrayNode();
+                JsonNode dbps = args.path("breakpoints");
+                if (dbps.isArray()) {
+                    for (JsonNode bp : dbps) {
+                        String dataId = bp.path("dataId").asText("");
+                        if (!dataId.isBlank()) {
+                            names.add(dataId);
+                        }
+                        verified.add(mapper.createObjectNode().put("verified", true));
+                    }
+                }
+                controller.setDataBreakpoints(names);
+                ObjectNode body = mapper.createObjectNode();
+                body.set("breakpoints", verified);
+                respond(reqSeq, command, body);
+            }
             case "launch" -> {
                 Map<String, Object> headers = toMap(args.path("headers"));
                 Map<String, Object> properties = toMap(args.path("properties"));
@@ -187,12 +222,21 @@ public final class DapDebugSession {
         }
     }
 
-    private void driveUntilStop(String reason) {
+    private void driveUntilStop(String fallbackReason) {
         async.execute(() -> {
             boolean paused = controller.awaitStop(60_000);
             if (paused) {
+                // A continue/step can actually stop for a data breakpoint, so the reason
+                // comes from the engine, not from the request that resumed the run.
+                String reason = controller.stopReason();
+                if (reason == null || reason.isBlank()) {
+                    reason = fallbackReason;
+                }
                 ObjectNode body = mapper.createObjectNode();
                 body.put("reason", reason);
+                if ("data breakpoint".equals(reason) && !controller.stopDetail().isBlank()) {
+                    body.put("description", controller.stopDetail() + " changed");
+                }
                 body.put("threadId", 1);
                 body.put("allThreadsStopped", true);
                 event("stopped", body);

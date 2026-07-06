@@ -95,4 +95,60 @@ class DebugControllerTest {
         assertThat(c.isFinished()).isTrue();
         assertThat(c.exitCause()).isNull();
     }
+
+    // 1: import ...
+    // 2: Message processData(Message message) {
+    // 3:     def x = 1
+    // 4:     x = 2
+    // 5:     x = 3
+    // 6:     message.setBody(x.toString())
+    // 7:     return message
+    // 8: }
+    private static final String MUTATING_SCRIPT =
+            "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                    + "Message processData(Message message) {\n"
+                    + "    def x = 1\n"
+                    + "    x = 2\n"
+                    + "    x = 3\n"
+                    + "    message.setBody(x.toString())\n"
+                    + "    return message\n"
+                    + "}\n";
+
+    @Test
+    void dataBreakpoint_stopsWhenAWatchedVariableChanges() {
+        DebugController c = new DebugController();
+        c.setDataBreakpoints(Set.of("x"));
+        c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
+
+        // First observed value (x=1 at the line-4 hook) is the baseline, no stop.
+        // x becomes 2, so the next statement boundary (line 5) is where the change shows.
+        assertThat(c.awaitStop(3000)).isTrue();
+        assertThat(c.currentLine()).isEqualTo(5);
+        assertThat(c.stopReason()).isEqualTo("data breakpoint");
+        assertThat(c.stopDetail()).isEqualTo("x");
+        assertThat(c.stack().get(0).locals()).containsEntry("x", 2);
+    }
+
+    @Test
+    void dataBreakpoint_continue_stopsAgainOnTheNextChange() {
+        DebugController c = new DebugController();
+        c.setDataBreakpoints(Set.of("x"));
+        c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
+        assertThat(c.awaitStop(3000)).isTrue(); // line 5, x==2
+
+        c.resume();
+        // x becomes 3 on line 5; the change shows at line 6.
+        assertThat(c.awaitStop(3000)).isTrue();
+        assertThat(c.currentLine()).isEqualTo(6);
+        assertThat(c.stack().get(0).locals()).containsEntry("x", 3);
+    }
+
+    @Test
+    void noDataBreakpoint_runsUninterrupted() {
+        DebugController c = new DebugController();
+        c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
+        // No line or data breakpoints → finishes without a pause.
+        assertThat(c.awaitStop(3000)).isFalse();
+        assertThat(c.isFinished()).isTrue();
+    }
 }

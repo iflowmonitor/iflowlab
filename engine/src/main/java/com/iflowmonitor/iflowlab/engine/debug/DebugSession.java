@@ -1,6 +1,9 @@
 package com.iflowmonitor.iflowlab.engine.debug;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +25,13 @@ public final class DebugSession {
 
     private final Set<Integer> breakpoints = ConcurrentHashMap.newKeySet();
 
+    // Data breakpoints ("watches"): names of locals to stop on when their value
+    // changes. Both maps are touched only under {@link #lock} (onStatement holds
+    // it; setWatches acquires it). lastWatchValues holds the last-seen string form
+    // of each watched local, so a change is one statement-boundary comparison.
+    private final Set<String> watches = new HashSet<>();
+    private final Map<String, String> lastWatchValues = new HashMap<>();
+
     private boolean paused;
     private boolean cancelled;
     private boolean finished;
@@ -31,6 +41,8 @@ public final class DebugSession {
     private int currentLine;
     private int currentDepth;
     private List<StackFrameInfo> currentStack = List.of();
+    private String stopReason = "";
+    private String stopDetail = "";
 
     public void setBreakpoints(Set<Integer> lines) {
         breakpoints.clear();
@@ -39,6 +51,19 @@ public final class DebugSession {
 
     public void addBreakpoint(int line) {
         breakpoints.add(line);
+    }
+
+    /** The locals whose value changes should pause the run (data breakpoints). */
+    public void setWatches(Set<String> names) {
+        lock.lock();
+        try {
+            watches.clear();
+            watches.addAll(names);
+            // Drop baselines for names no longer watched; kept names keep theirs.
+            lastWatchValues.keySet().retainAll(names);
+        } finally {
+            lock.unlock();
+        }
     }
 
     // ---- script-thread side ----
@@ -53,14 +78,27 @@ public final class DebugSession {
             currentDepth = depth;
             currentStack = stack;
 
-            boolean stop = breakpoints.contains(line);
-            if (!stop) {
-                stop = switch (stepMode) {
-                    case INTO -> true;
-                    case OVER -> depth <= stepAtDepth;
-                    case OUT -> depth < stepAtDepth;
-                    case NONE -> false;
-                };
+            // Always re-baseline watched locals (side effect), so a change is seen
+            // exactly once regardless of why we stop this statement.
+            String dataHit = checkWatches(stack);
+
+            boolean stop = true;
+            if (dataHit != null) {
+                stopReason = "data breakpoint";
+                stopDetail = dataHit;
+            } else if (breakpoints.contains(line)) {
+                stopReason = "breakpoint";
+                stopDetail = "";
+            } else if (switch (stepMode) {
+                case INTO -> true;
+                case OVER -> depth <= stepAtDepth;
+                case OUT -> depth < stepAtDepth;
+                case NONE -> false;
+            }) {
+                stopReason = "step";
+                stopDetail = "";
+            } else {
+                stop = false;
             }
 
             if (stop) {
@@ -77,6 +115,34 @@ public final class DebugSession {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Updates the baseline for every watched local and returns the name of one
+     * whose value changed since the previous statement, or null. A watch only
+     * fires once it has a prior value (the first sighting sets the baseline), so
+     * a variable's initial assignment is not treated as a change. Only the
+     * innermost frame is inspected — a data breakpoint is scoped to the current
+     * frame, matching how it was set from the paused Variables view. Called under
+     * {@link #lock}.
+     */
+    private String checkWatches(List<StackFrameInfo> stack) {
+        if (watches.isEmpty() || stack.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> locals = stack.get(0).locals();
+        String changed = null;
+        for (String name : watches) {
+            if (!locals.containsKey(name)) {
+                continue;
+            }
+            String now = String.valueOf(locals.get(name));
+            String prev = lastWatchValues.put(name, now);
+            if (prev != null && !prev.equals(now)) {
+                changed = name;
+            }
+        }
+        return changed;
     }
 
     public void markFinished(Throwable cause) {
@@ -124,6 +190,16 @@ public final class DebugSession {
 
     public int currentLine() {
         return guarded(() -> currentLine);
+    }
+
+    /** Why the run last paused: "breakpoint", "step", or "data breakpoint". */
+    public String stopReason() {
+        return guarded(() -> stopReason);
+    }
+
+    /** For a data breakpoint pause, the name of the local that changed (else ""). */
+    public String stopDetail() {
+        return guarded(() -> stopDetail);
     }
 
     public List<StackFrameInfo> stack() {
