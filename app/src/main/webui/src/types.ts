@@ -101,3 +101,12 @@ export interface CaseReport {
   result: RunResult;
   assertions: AssertionResult[];
 }
+
+export interface Finding {
+  line: number;
+  column: number;
+  endColumn: number;
+  severity: "ERROR" | "WARNING" | "INFO";
+  rule: string;
+  message: string;
+}

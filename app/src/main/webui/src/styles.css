@@ -96,6 +96,12 @@ body {
 .frame { padding: 6px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
 .frame:hover { background: var(--bg3); }
 
+.findings { border: 1px solid #5a4a2a; border-radius: 6px; background: #2c2415; overflow: hidden; }
+.findingshead { padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--warn); background: #332a17; border-bottom: 1px solid #5a4a2a; }
+.findingrow { padding: 5px 10px; font-size: 12px; color: #d9cfae; border-top: 1px solid #3d3320; }
+.findingrow:first-of-type { border-top: none; }
+.findingline { color: var(--warn); font-family: var(--mono); margin-right: 4px; }
+
 .columns { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; }
 .left, .right { overflow-y: auto; padding: 14px 16px; min-height: 0; }
 .left { border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
