@@ -58,6 +58,10 @@ body {
   font-size: 13px;
   cursor: pointer;
 }
+.langsel {
+  background: var(--bg3); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
 .debugbar { display: flex; align-items: center; gap: 4px; }
 .debugbar button {
   background: var(--bg3);

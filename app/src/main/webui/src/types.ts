@@ -33,6 +33,8 @@ export interface RunResult {
   exception: ExceptionInfo | null;
 }
 
+export type EngineKind = "groovy" | "xslt";
+
 export interface RunRequest {
   script: string;
   body: string;
@@ -40,6 +42,7 @@ export interface RunRequest {
   headers: Record<string, unknown>;
   properties: Record<string, unknown>;
   timeoutMs?: number;
+  kind?: EngineKind;
 }
 
 export interface WorkspaceInfo {

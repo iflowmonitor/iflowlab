@@ -16,7 +16,8 @@ public record RunRequestDto(
         String contentType,
         Map<String, Object> headers,
         Map<String, Object> properties,
-        Long timeoutMs) {
+        Long timeoutMs,
+        String kind) {
 
     RunRequest toRunRequest() {
         return toRunRequest(null);

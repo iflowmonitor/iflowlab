@@ -13,7 +13,7 @@ import {
 } from "./api";
 import { DapClient, type StackFrame, type Variable } from "./dap";
 import { renderBody } from "./format";
-import type { Assertion, AssertionKind, BodyType, CaseReport, RunResult, WorkspaceInfo } from "./types";
+import type { Assertion, AssertionKind, BodyType, CaseReport, EngineKind, RunResult, WorkspaceInfo } from "./types";
 
 const ASSERTION_KINDS: { kind: AssertionKind; label: string; needsTarget: boolean }[] = [
   { kind: "STATUS", label: "status ==", needsTarget: false },
@@ -41,6 +41,18 @@ Message processData(Message message) {
 }
 `;
 
+const SAMPLE_XSLT = `<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="xml" indent="yes" omit-xml-declaration="yes"/>
+  <xsl:template match="/order">
+    <receipt id="{@id}">
+      <total><xsl:value-of select="sum(item/@price)"/></total>
+    </receipt>
+  </xsl:template>
+</xsl:stylesheet>
+`;
+
+const SAMPLE_XML = '<order id="42"><item price="10"/><item price="5"/></order>';
+
 function toRecord(pairs: Pair[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const p of pairs) if (p.key.trim()) out[p.key] = p.value;
@@ -53,6 +65,7 @@ function toPairs(rec: Record<string, unknown>): Pair[] {
 
 export function App() {
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [kind, setKind] = useState<EngineKind>("groovy");
   const [script, setScript] = useState(SAMPLE_SCRIPT);
   const [body, setBody] = useState("hello world");
   const [contentType, setContentType] = useState("text/plain");
@@ -217,8 +230,24 @@ export function App() {
     try {
       setScript(await getScript(path));
       setScriptPath(path);
+      setKind(/\.xslt?$/i.test(path) ? "xslt" : "groovy");
     } catch (e) {
       setError(String(e));
+    }
+  }
+
+  // Swap the editor to a working sample when toggling engines, but only if it still
+  // holds an untouched sample (never clobber the user's own script).
+  function switchKind(next: EngineKind) {
+    setKind(next);
+    if (next === "xslt" && script === SAMPLE_SCRIPT) {
+      setScript(SAMPLE_XSLT);
+      if (!body.trim() || body === "hello world") setBody(SAMPLE_XML);
+      if (!contentType.trim() || contentType === "text/plain") setContentType("application/xml");
+      setScriptPath(null);
+    } else if (next === "groovy" && script === SAMPLE_XSLT) {
+      setScript(SAMPLE_SCRIPT);
+      setScriptPath(null);
     }
   }
 
@@ -338,6 +367,7 @@ export function App() {
         contentType: contentType || null,
         headers: toRecord(headers),
         properties: toRecord(properties),
+        kind,
       });
       setResult(r);
       setReport(null);
@@ -359,6 +389,10 @@ export function App() {
         <div className="ws" title={workspace?.root}>
           {workspace ? `workspace: ${workspace.root}` : "no workspace"}
         </div>
+        <select className="langsel" value={kind} onChange={(e) => switchKind(e.target.value as EngineKind)} disabled={debugging} title="Engine">
+          <option value="groovy">Groovy</option>
+          <option value="xslt">XSLT</option>
+        </select>
         {debugging ? (
           <div className="debugbar">
             <button onClick={() => debugStep("continue")} disabled={!stopped} title="Continue">▶</button>
@@ -368,9 +402,11 @@ export function App() {
             <button onClick={stopDebug} className="stopdebug" title="Stop">◼</button>
           </div>
         ) : (
-          <button className="debug" onClick={startDebug} title="Debug (set breakpoints in the gutter)">
-            🐞 Debug
-          </button>
+          kind === "groovy" && (
+            <button className="debug" onClick={startDebug} title="Debug (set breakpoints in the gutter)">
+              🐞 Debug
+            </button>
+          )
         )}
         <button className="debug" onClick={runSuite} disabled={debugging} title="Run all saved cases">
           ✓ Run all cases
@@ -385,7 +421,7 @@ export function App() {
           <Picker label="Script" options={workspace?.scripts ?? []} onPick={loadScript} placeholder="open a .groovy from workspace…" />
           <div className="editor">
             <Editor
-              language="groovy"
+              language={kind === "xslt" ? "xml" : "groovy"}
               theme="vs-dark"
               value={script}
               onChange={(v) => setScript(v ?? "")}
