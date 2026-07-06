@@ -39,14 +39,17 @@ public class WorkspaceService {
         return root;
     }
 
-    /** All {@code *.groovy} files anywhere in the workspace, as workspace-relative posix paths. */
+    /** Runnable scripts anywhere in the workspace ({@code *.groovy}, {@code *.xsl(t)}), as posix paths. */
     public List<String> listScripts() {
         if (!Files.isDirectory(root)) {
             return List.of();
         }
         try (Stream<Path> walk = Files.walk(root)) {
             return walk.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(".groovy"))
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.endsWith(".groovy") || n.endsWith(".xsl") || n.endsWith(".xslt");
+                    })
                     .map(p -> root.relativize(p).toString().replace('\\', '/'))
                     .sorted()
                     .toList();

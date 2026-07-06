@@ -12,11 +12,11 @@ import java.nio.charset.StandardCharsets;
  * (octet-stream, zip, …) are not authoritative and fall through to the sniff.
  * Pure and side-effect free — the app layer applies any user override on top.
  */
-final class BodyTypeClassifier {
+public final class BodyTypeClassifier {
 
     private BodyTypeClassifier() {}
 
-    static BodyType classify(byte[] body, String contentType) {
+    public static BodyType classify(byte[] body, String contentType) {
         BodyType declared = fromContentType(contentType);
         if (declared != null) {
             return declared;
