@@ -3,8 +3,13 @@ package com.iflowmonitor.iflowlab.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.iflowmonitor.iflowlab.app.cases.MessageSpec;
+import com.iflowmonitor.iflowlab.app.cases.RunCase;
+import com.iflowmonitor.iflowlab.engine.assertions.Assertion;
+import com.iflowmonitor.iflowlab.engine.assertions.Assertion.Kind;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -64,5 +69,40 @@ class WorkspaceServiceTest {
         WorkspaceService svc = new WorkspaceService(ws.toString());
         assertThatThrownBy(() -> svc.saveMessage("../evil", "x", "text/plain", Map.of(), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void savesRunCase_asYaml_thenReadsItBack(@TempDir Path ws) {
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+
+        RunCase saved = new RunCase(
+                "uppercase-happy",
+                "Upper.groovy",
+                new MessageSpec("hello world", "text/plain", Map.of("In", "1"), Map.of("P", "x")),
+                List.of(
+                        Assertion.of(Kind.STATUS, "OK"),
+                        Assertion.of(Kind.BODY_EQUALS, "HELLO WORLD"),
+                        Assertion.of(Kind.HEADER, "Content-Type", "text/plain")));
+        svc.saveCase(saved);
+
+        assertThat(Files.exists(ws.resolve("cases/uppercase-happy.yaml"))).isTrue();
+        assertThat(svc.listCases()).containsExactly("uppercase-happy");
+
+        RunCase back = svc.readCase("uppercase-happy");
+        assertThat(back.script()).isEqualTo("Upper.groovy");
+        assertThat(back.message().body()).isEqualTo("hello world");
+        assertThat(back.message().contentType()).isEqualTo("text/plain");
+        assertThat(back.message().headers()).containsEntry("In", "1");
+        assertThat(back.assertions()).containsExactly(
+                new Assertion(Kind.STATUS, null, "OK"),
+                new Assertion(Kind.BODY_EQUALS, null, "HELLO WORLD"),
+                new Assertion(Kind.HEADER, "Content-Type", "text/plain"));
+    }
+
+    @Test
+    void saveCase_rejectsBadName(@TempDir Path ws) {
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+        RunCase bad = new RunCase("../evil", "X.groovy", new MessageSpec("", null, Map.of(), Map.of()), List.of());
+        assertThatThrownBy(() -> svc.saveCase(bad)).isInstanceOf(IllegalArgumentException.class);
     }
 }
