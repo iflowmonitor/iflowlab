@@ -90,6 +90,32 @@ class DapDebugSessionTest {
     }
 
     @Test
+    void launch_withExplicitNulls_usesTextBodyAndDefaultProcessData() {
+        // Regression: the SPA sends bodyBase64:null and function:null explicitly. A JSON
+        // null must mean "absent" — text body + default processData — not the literal
+        // string "null" (which would decode to garbage bytes and call invokeMethod("null")).
+        request("initialize", "{}");
+        request("configurationDone", "{}");
+        String script = "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                + "Message processData(Message message) {\n"
+                + "    if (message.getBody(String) != 'hello') {\n"
+                + "        throw new RuntimeException('corrupt body: ' + message.getBody(String))\n"
+                + "    }\n"
+                + "    return message\n"
+                + "}\n";
+        String args = "{\"script\":" + mapper.valueToTree(script)
+                + ",\"body\":\"hello\",\"bodyBase64\":null,\"function\":null,\"contentType\":null}";
+        request("launch", args);
+
+        assertThat(events("terminated")).isNotEmpty();
+        String stderr = events("output").stream()
+                .filter(e -> "stderr".equals(e.path("body").path("category").asText()))
+                .map(e -> e.path("body").path("output").asText())
+                .reduce("", String::concat);
+        assertThat(stderr).doesNotContain("MissingMethod").doesNotContain("corrupt body");
+    }
+
+    @Test
     void launch_withInlineServices_bindsThemForTheDebuggedRun() {
         // No workspace supplier configured — services arrive in the DAP launch args (SaaS R1).
         String credScript =

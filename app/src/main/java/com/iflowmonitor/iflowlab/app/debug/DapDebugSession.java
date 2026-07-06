@@ -73,9 +73,14 @@ public final class DapDebugSession {
      * uploaded in the workbench) wins over the UTF-8 text {@code body}.
      */
     private static byte[] launchBody(JsonNode args) {
-        String b64 = args.path("bodyBase64").isMissingNode() ? null : args.path("bodyBase64").asText();
-        if (b64 != null && !b64.isBlank()) {
-            return java.util.Base64.getDecoder().decode(b64.trim());
+        // hasNonNull, not isMissingNode: the SPA sends bodyBase64:null explicitly, and a
+        // JSON null is a present NullNode whose asText() is the literal "null" — which
+        // would decode to garbage. hasNonNull treats both absent and null as "no binary".
+        if (args.hasNonNull("bodyBase64")) {
+            String b64 = args.path("bodyBase64").asText();
+            if (!b64.isBlank()) {
+                return java.util.Base64.getDecoder().decode(b64.trim());
+            }
         }
         return args.path("body").asText("").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
@@ -119,17 +124,30 @@ public final class DapDebugSession {
             case "launch" -> {
                 Map<String, Object> headers = toMap(args.path("headers"));
                 Map<String, Object> properties = toMap(args.path("properties"));
-                String contentType = args.path("contentType").isMissingNode() ? null : args.path("contentType").asText();
-                String function = args.path("function").isMissingNode() ? null : args.path("function").asText();
-                RunRequest request = new RunRequest(
-                        args.path("script").asText(""),
-                        launchBody(args),
-                        contentType, headers, properties, List.of(), 0L, launchServices(args),
-                        List.of(), function);
-                controller.setBreakpoints(breakpoints);
-                controller.launch(request);
-                respond(reqSeq, command, null);
-                driveUntilStop("breakpoint");
+                String contentType = args.hasNonNull("contentType") ? args.path("contentType").asText() : null;
+                String function = args.hasNonNull("function") ? args.path("function").asText() : null;
+                byte[] launchBody;
+                try {
+                    launchBody = launchBody(args);
+                } catch (IllegalArgumentException e) {
+                    // e.g. a malformed base64 body — fail the launch cleanly (the DAP
+                    // switch has no outer catch), don't leave the client hanging.
+                    outputEvent("stderr", "invalid launch request: " + e.getMessage() + "\n");
+                    respond(reqSeq, command, null);
+                    event("terminated", null);
+                    launchBody = null;
+                }
+                if (launchBody != null) {
+                    RunRequest request = new RunRequest(
+                            args.path("script").asText(""),
+                            launchBody,
+                            contentType, headers, properties, List.of(), 0L, launchServices(args),
+                            List.of(), function);
+                    controller.setBreakpoints(breakpoints);
+                    controller.launch(request);
+                    respond(reqSeq, command, null);
+                    driveUntilStop("breakpoint");
+                }
             }
             case "threads" -> {
                 ObjectNode body = mapper.createObjectNode();
