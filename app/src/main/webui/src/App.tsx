@@ -15,7 +15,8 @@ import {
 } from "./api";
 import { DapClient, type StackFrame, type Variable } from "./dap";
 import { renderBody } from "./format";
-import type { Assertion, AssertionKind, AttachmentSpec, BodyType, CaseReport, EngineKind, RunResult, WorkspaceInfo } from "./types";
+import { runScriptStreaming } from "./runStream";
+import type { Assertion, AssertionKind, AttachmentSpec, BodyType, CaseReport, EngineKind, LogLine, RunResult, WorkspaceInfo } from "./types";
 
 const ASSERTION_KINDS: { kind: AssertionKind; label: string; needsTarget: boolean }[] = [
   { kind: "STATUS", label: "status ==", needsTarget: false },
@@ -83,6 +84,7 @@ export function App() {
   const [attachments, setAttachments] = useState<AttachmentSpec[]>([]);
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [liveLogs, setLiveLogs] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<BodyType | "AUTO">("AUTO");
   const [saveName, setSaveName] = useState("");
@@ -427,22 +429,30 @@ export function App() {
   async function run() {
     setRunning(true);
     setError(null);
+    setResult(null);
+    setReport(null);
+    setSuite(null);
+    setLiveLogs([]);
+    const payload = {
+      script,
+      body,
+      contentType: contentType || null,
+      headers: toRecord(headers),
+      properties: toRecord(properties),
+      attachments: attachments.filter((a) => a.name.trim()),
+      kind,
+    };
     try {
-      const r = await runScript({
-        script,
-        body,
-        contentType: contentType || null,
-        headers: toRecord(headers),
-        properties: toRecord(properties),
-        attachments: attachments.filter((a) => a.name.trim()),
-        kind,
-      });
+      // Groovy runs stream their log lines live over a WebSocket; XSLT has no logs, so
+      // it stays on the plain request/response path.
+      const r =
+        kind === "groovy"
+          ? await runScriptStreaming(payload, (line) => setLiveLogs((prev) => [...prev, line]))
+          : await runScript(payload);
       setResult(r);
-      setReport(null);
-      setSuite(null);
       setOverride("AUTO");
     } catch (e) {
-      setError(String(e));
+      setError(String(e instanceof Error ? e.message : e));
     } finally {
       setRunning(false);
     }
@@ -571,6 +581,8 @@ export function App() {
               output={debugOutput}
               onSelectFrame={loadFrameVars}
             />
+          ) : running && kind === "groovy" ? (
+            <LiveRunView logs={liveLogs} />
           ) : suite ? (
             <SuiteView reports={suite} />
           ) : report ? (
@@ -581,6 +593,25 @@ export function App() {
             !error && <div className="placeholder">Run a script, add assertions and Run case, or Debug.</div>
           )}
         </section>
+      </div>
+    </div>
+  );
+}
+
+function LiveRunView(props: { logs: LogLine[] }) {
+  return (
+    <div className="output">
+      <div className="statusrow">
+        <span className="status running">RUNNING</span>
+        <span className="meta">{props.logs.length} log {props.logs.length === 1 ? "line" : "lines"} streamed</span>
+      </div>
+      <div className="panel">
+        <div className="paneltitle">Live log</div>
+        {props.logs.length === 0 ? (
+          <div className="muted" style={{ padding: "10px 12px" }}>waiting for output…</div>
+        ) : (
+          <pre className="logs">{props.logs.map((l) => `[${l.source}] ${l.message}`).join("\n")}</pre>
+        )}
       </div>
     </div>
   );

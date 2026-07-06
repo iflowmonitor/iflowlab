@@ -164,6 +164,7 @@ body {
 .status.ok { background: #17392a; color: var(--ok); }
 .status.exception { background: #3a1f22; color: var(--err); }
 .status.timeout { background: #3d3320; color: #e0a94a; }
+.status.running { background: #1e3050; color: var(--accent); }
 .meta { color: var(--muted); font-family: var(--mono); font-size: 12px; }
 
 .panel { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; background: var(--bg2); overflow: hidden; }

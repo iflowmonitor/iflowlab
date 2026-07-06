@@ -46,16 +46,28 @@ public final class GroovyRunEngine implements Engine {
 
     @Override
     public RunResult run(RunRequest request) {
+        return run(request, line -> {});
+    }
+
+    /**
+     * Runs the script, streaming each log line to {@code onLog} the moment it is
+     * produced (messageLog entries and {@code println} lines), while still
+     * returning the complete log list in the {@link RunResult} (slice 10). The
+     * plain {@link #run(RunRequest)} passes a no-op listener.
+     */
+    public RunResult run(RunRequest request, java.util.function.Consumer<RunResult.LogLine> onLog) {
         Message message = seedMessage(request);
         Map<String, Object> headersBefore = snapshot(message.getHeaders());
         Map<String, Object> propertiesBefore = snapshot(message.getProperties());
 
-        CapturingMessageLogFactory logFactory = new CapturingMessageLogFactory();
+        CapturingMessageLogFactory logFactory = new CapturingMessageLogFactory(
+                entry -> onLog.accept(new RunResult.LogLine("INFO", "messageLog", entry.value())));
         ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+        LineTee printTarget = new LineTee(stdout, line -> onLog.accept(new RunResult.LogLine("INFO", "println", line)));
 
         ExecutorService worker = Executors.newSingleThreadExecutor(namedDaemon());
         try {
-            Future<Message> future = worker.submit(invokeScript(request, message, logFactory, stdout));
+            Future<Message> future = worker.submit(invokeScript(request, message, logFactory, printTarget));
             Message out = future.get(request.timeoutMs(), TimeUnit.MILLISECONDS);
             return success(out, headersBefore, propertiesBefore, logs(stdout, logFactory));
         } catch (TimeoutException e) {
@@ -75,7 +87,7 @@ public final class GroovyRunEngine implements Engine {
     }
 
     private Callable<Message> invokeScript(
-            RunRequest request, Message message, CapturingMessageLogFactory logFactory, ByteArrayOutputStream stdout) {
+            RunRequest request, Message message, CapturingMessageLogFactory logFactory, java.io.OutputStream stdout) {
         return () -> {
             Binding binding = new Binding();
             binding.setVariable("messageLogFactory", logFactory);
@@ -191,6 +203,40 @@ public final class GroovyRunEngine implements Engine {
             }
         }
         return null;
+    }
+
+    /**
+     * Tees script {@code println} output to a backing buffer (read back for the
+     * final result) while emitting each completed line to a live listener as soon
+     * as a newline arrives (slice 10). Writes on the worker thread only.
+     */
+    private static final class LineTee extends java.io.OutputStream {
+        private final ByteArrayOutputStream backing;
+        private final java.util.function.Consumer<String> onLine;
+        private final ByteArrayOutputStream lineBuf = new ByteArrayOutputStream();
+
+        LineTee(ByteArrayOutputStream backing, java.util.function.Consumer<String> onLine) {
+            this.backing = backing;
+            this.onLine = onLine;
+        }
+
+        @Override
+        public void write(int b) {
+            backing.write(b);
+            if (b == '\n') {
+                emit();
+            } else {
+                lineBuf.write(b);
+            }
+        }
+
+        private void emit() {
+            String line = stripCr(lineBuf.toString(StandardCharsets.UTF_8));
+            lineBuf.reset();
+            if (!line.isEmpty()) {
+                onLine.accept(line);
+            }
+        }
     }
 
     private static List<RunResult.LogLine> logs(ByteArrayOutputStream stdout, CapturingMessageLogFactory logFactory) {
