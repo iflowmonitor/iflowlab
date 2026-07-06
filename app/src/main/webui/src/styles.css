@@ -48,6 +48,50 @@ body {
 }
 .run:disabled { opacity: 0.6; cursor: default; }
 
+.debug {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.debugbar { display: flex; align-items: center; gap: 4px; }
+.debugbar button {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  width: 34px;
+  height: 32px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.debugbar button:disabled { opacity: 0.4; cursor: default; }
+.debugbar button.stopdebug { color: var(--err); }
+
+/* Monaco glyph-margin decorations */
+.bp-glyph {
+  background: var(--err);
+  border-radius: 50%;
+  width: 10px !important;
+  height: 10px !important;
+  margin-left: 5px;
+  margin-top: 5px;
+}
+.stopped-line { background: rgba(224, 169, 74, 0.16); }
+.stopped-glyph::before {
+  content: "▶";
+  color: var(--warn);
+  margin-left: 3px;
+}
+
+.callstack { padding: 4px 0; }
+.frame { padding: 6px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
+.frame:hover { background: var(--bg3); }
+
 .columns { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; }
 .left, .right { overflow-y: auto; padding: 14px 16px; min-height: 0; }
 .left { border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }

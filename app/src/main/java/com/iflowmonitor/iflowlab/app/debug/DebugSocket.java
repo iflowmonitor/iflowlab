@@ -3,6 +3,7 @@ package com.iflowmonitor.iflowlab.app.debug;
 import io.quarkus.websockets.next.OnClose;
 import io.quarkus.websockets.next.OnOpen;
 import io.quarkus.websockets.next.OnTextMessage;
+import io.quarkus.websockets.next.OpenConnections;
 import io.quarkus.websockets.next.WebSocket;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.inject.Inject;
@@ -15,6 +16,14 @@ import java.util.concurrent.Executors;
  * DAP-over-WebSocket endpoint for the debugger (D8). One {@link DapDebugSession}
  * per connection — a single active debug session (O6). The engine stays swappable
  * behind the DAP contract.
+ *
+ * <p>Async stop/terminate events are emitted from a background thread by
+ * {@code driveUntilStop} (which blocks on the worker parking at a breakpoint). The
+ * injected {@link WebSocketConnection} is a {@code @SessionScoped} proxy that only
+ * resolves on the connection's own callback thread, so sending from the background
+ * thread throws {@code ContextNotActiveException}. We instead look the live
+ * connection up by id via the application-scoped {@link OpenConnections} registry,
+ * which is safe from any thread, and send with the non-blocking {@code sendText}.
  */
 @WebSocket(path = "/debug")
 public class DebugSocket {
@@ -29,9 +38,18 @@ public class DebugSocket {
     @Inject
     WebSocketConnection connection;
 
+    @Inject
+    OpenConnections openConnections;
+
     @OnOpen
     public void onOpen() {
-        SESSIONS.put(connection.id(), new DapDebugSession(json -> connection.sendTextAndAwait(json), ASYNC));
+        String id = connection.id();
+        SESSIONS.put(id, new DapDebugSession(json -> send(id, json), ASYNC));
+    }
+
+    private void send(String connectionId, String json) {
+        openConnections.findByConnectionId(connectionId).ifPresent(
+                conn -> conn.sendText(json).subscribe().with(ignored -> {}, failure -> {}));
     }
 
     @OnTextMessage
