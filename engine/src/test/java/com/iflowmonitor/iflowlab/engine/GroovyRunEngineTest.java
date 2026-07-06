@@ -30,6 +30,26 @@ class GroovyRunEngineTest {
     }
 
     @Test
+    void runsANamedEntryFunction_notJustProcessData() {
+        String script =
+                """
+                import com.sap.gateway.ip.core.customdev.util.Message
+                Message extractParams(Message message) {
+                    message.setBody('via-extractParams')
+                    return message
+                }
+                """;
+        RunRequest req = new RunRequest(
+                script, "x".getBytes(), "text/plain",
+                Map.of(), Map.of(), List.of(), 10_000L, null, List.of(), "extractParams");
+
+        RunResult result = engine.run(req);
+
+        assertThat(result.status()).isEqualTo(RunResult.Status.OK);
+        assertThat(result.body().inline()).isEqualTo("via-extractParams");
+    }
+
+    @Test
     void classifiesOutput_usingContentTypeHeaderSetByScript() {
         String script =
                 """

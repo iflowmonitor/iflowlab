@@ -68,6 +68,18 @@ public final class DapDebugSession {
         return services.get();
     }
 
+    /**
+     * The launch input body as bytes: a base64 {@code bodyBase64} (a binary body
+     * uploaded in the workbench) wins over the UTF-8 text {@code body}.
+     */
+    private static byte[] launchBody(JsonNode args) {
+        String b64 = args.path("bodyBase64").isMissingNode() ? null : args.path("bodyBase64").asText();
+        if (b64 != null && !b64.isBlank()) {
+            return java.util.Base64.getDecoder().decode(b64.trim());
+        }
+        return args.path("body").asText("").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     public void onRequest(String raw) {
         JsonNode req;
         try {
@@ -107,12 +119,13 @@ public final class DapDebugSession {
             case "launch" -> {
                 Map<String, Object> headers = toMap(args.path("headers"));
                 Map<String, Object> properties = toMap(args.path("properties"));
-                String body = args.path("body").asText("");
                 String contentType = args.path("contentType").isMissingNode() ? null : args.path("contentType").asText();
+                String function = args.path("function").isMissingNode() ? null : args.path("function").asText();
                 RunRequest request = new RunRequest(
                         args.path("script").asText(""),
-                        body.getBytes(StandardCharsets.UTF_8),
-                        contentType, headers, properties, List.of(), 0L, launchServices(args));
+                        launchBody(args),
+                        contentType, headers, properties, List.of(), 0L, launchServices(args),
+                        List.of(), function);
                 controller.setBreakpoints(breakpoints);
                 controller.launch(request);
                 respond(reqSeq, command, null);

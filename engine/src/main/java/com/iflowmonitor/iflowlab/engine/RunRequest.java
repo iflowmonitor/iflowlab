@@ -21,7 +21,8 @@ public record RunRequest(
         List<java.net.URL> extraClasspath,
         long timeoutMs,
         CpiServices services,
-        List<AttachmentInput> attachments) {
+        List<AttachmentInput> attachments,
+        String function) {
 
     public RunRequest {
         headers = headers == null ? Map.of() : new LinkedHashMap<>(headers);
@@ -31,6 +32,22 @@ public record RunRequest(
         if (timeoutMs <= 0) {
             timeoutMs = 10_000L;
         }
+        // The Groovy entry function CPI calls; blank means the standard processData.
+        function = (function == null || function.isBlank()) ? "processData" : function;
+    }
+
+    /** Back-compat: the pre-function-name canonical shape, defaulting to processData. */
+    public RunRequest(
+            String script,
+            byte[] body,
+            String contentType,
+            Map<String, Object> headers,
+            Map<String, Object> properties,
+            List<java.net.URL> extraClasspath,
+            long timeoutMs,
+            CpiServices services,
+            List<AttachmentInput> attachments) {
+        this(script, body, contentType, headers, properties, extraClasspath, timeoutMs, services, attachments, "processData");
     }
 
     /** Back-compat: with CPI services, no input attachments. */

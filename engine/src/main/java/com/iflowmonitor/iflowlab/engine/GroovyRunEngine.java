@@ -100,7 +100,7 @@ public final class GroovyRunEngine implements Engine {
             try {
                 GroovyShell shell = new GroovyShell(classLoader(request), binding, compilerConfig());
                 Script script = shell.parse(request.script());
-                Object out = script.invokeMethod("processData", message);
+                Object out = script.invokeMethod(request.function(), message);
                 return out instanceof Message m ? m : message;
             } finally {
                 com.sap.it.api.ITApiFactory.unbind();

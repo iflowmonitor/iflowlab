@@ -65,7 +65,7 @@ public final class DebugController {
                 com.sap.it.api.ITApiFactory.bind(request.services().registry());
             }
             try {
-                result = script.invokeMethod("processData", message);
+                result = script.invokeMethod(request.function(), message);
                 s.markFinished(null);
             } catch (Throwable t) {
                 s.markFinished(t);
