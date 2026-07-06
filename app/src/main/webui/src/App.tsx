@@ -535,7 +535,13 @@ export function App() {
 
       <div className="columns">
         <section className="left">
-          <Picker label="Script" options={workspace?.scripts ?? []} onPick={loadScript} placeholder="open a .groovy from workspace…" value={scriptPath ?? ""} />
+          <Picker
+            label="Script"
+            options={workspace?.scripts ?? []}
+            onPick={loadScript}
+            placeholder={kind === "xslt" ? "open an .xsl/.xslt from workspace…" : "open a .groovy from workspace…"}
+            value={scriptPath ?? ""}
+          />
           {pendingSampleKind && (
             <div className="samplebar">
               <span>
