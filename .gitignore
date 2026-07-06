@@ -17,6 +17,17 @@ gradle-app.setting
 *.iws
 out/
 
+# Maven
+target/
+
+# Node / frontend build
+node_modules/
+app/src/main/webui/dist/
+
+# Local verification artifacts
+.playwright-mcp/
+/iflowlab-*.png
+
 # Org convention
 *-JOURNAL.md
 night-run-status.md

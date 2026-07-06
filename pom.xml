@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.iflowmonitor.iflowlab</groupId>
+  <artifactId>iflowlab-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>iflowlab (web workbench)</name>
+  <description>Local run/debug workbench for SAP CPI Groovy scripts</description>
+
+  <modules>
+    <module>cpi-mock</module>
+    <module>engine</module>
+    <module>app</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+
+    <!-- Pinned to the current CPI tenant runtime (Groovy Script step 2.x). See
+         grill-me-sessions/01-web-workbench.md R1. Config-swappable per D3. -->
+    <groovy.version>4.0.29</groovy.version>
+
+    <!-- Quarkus 3.36.3 (latest 3.x, Jul 2026); Quinoa 2.8.3 built against 3.36.2. -->
+    <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+    <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+    <quarkus.platform.version>3.36.3</quarkus.platform.version>
+    <quinoa.version>2.8.3</quinoa.version>
+
+    <junit.version>5.14.2</junit.version>
+    <assertj.version>3.27.6</assertj.version>
+    <snakeyaml.version>2.6</snakeyaml.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Quarkus platform BOM -->
+      <dependency>
+        <groupId>${quarkus.platform.group-id}</groupId>
+        <artifactId>${quarkus.platform.artifact-id}</artifactId>
+        <version>${quarkus.platform.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Groovy modules mirroring the CPI-exposed set (R7). -->
+      <dependency>
+        <groupId>org.apache.groovy</groupId>
+        <artifactId>groovy</artifactId>
+        <version>${groovy.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.groovy</groupId>
+        <artifactId>groovy-xml</artifactId>
+        <version>${groovy.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.groovy</groupId>
+        <artifactId>groovy-json</artifactId>
+        <version>${groovy.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.groovy</groupId>
+        <artifactId>groovy-dateutil</artifactId>
+        <version>${groovy.version}</version>
+      </dependency>
+
+      <!-- Internal modules -->
+      <dependency>
+        <groupId>com.iflowmonitor.iflowlab</groupId>
+        <artifactId>cpi-mock</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.iflowmonitor.iflowlab</groupId>
+        <artifactId>engine</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- Test stack for the non-Quarkus modules -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.5.2</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
