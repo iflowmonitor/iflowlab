@@ -37,6 +37,11 @@
       <artifactId>quarkus-websockets-next</artifactId>
     </dependency>
     <dependency>
+      <!-- /q/health/live for container orchestration + compose healthchecks (SaaS R2). -->
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-health</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.yaml</groupId>
       <artifactId>snakeyaml</artifactId>
       <version>${snakeyaml.version}</version>
