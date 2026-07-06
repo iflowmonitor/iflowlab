@@ -536,8 +536,10 @@ export function App() {
       <div className="columns">
         <section className="left">
           <Picker
-            label="Script"
-            options={workspace?.scripts ?? []}
+            label={kind === "xslt" ? "Stylesheet" : "Script"}
+            options={(workspace?.scripts ?? []).filter((s) =>
+              kind === "xslt" ? /\.xslt?$/i.test(s) : /\.groovy$/i.test(s),
+            )}
             onPick={loadScript}
             placeholder={kind === "xslt" ? "open an .xsl/.xslt from workspace…" : "open a .groovy from workspace…"}
             value={scriptPath ?? ""}
