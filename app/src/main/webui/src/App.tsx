@@ -1,9 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { getMessage, getScript, getWorkspace, runScript, saveMessage } from "./api";
+import {
+  getCase,
+  getMessage,
+  getScript,
+  getWorkspace,
+  runAllCases,
+  runCase,
+  runScript,
+  saveCase,
+  saveMessage,
+} from "./api";
 import { DapClient, type StackFrame, type Variable } from "./dap";
 import { renderBody } from "./format";
-import type { BodyType, RunResult, WorkspaceInfo } from "./types";
+import type { Assertion, AssertionKind, BodyType, CaseReport, RunResult, WorkspaceInfo } from "./types";
+
+const ASSERTION_KINDS: { kind: AssertionKind; label: string; needsTarget: boolean }[] = [
+  { kind: "STATUS", label: "status ==", needsTarget: false },
+  { kind: "BODY_EQUALS", label: "body ==", needsTarget: false },
+  { kind: "BODY_CONTAINS", label: "body contains", needsTarget: false },
+  { kind: "BODY_TYPE", label: "body type ==", needsTarget: false },
+  { kind: "HEADER", label: "header", needsTarget: true },
+  { kind: "PROPERTY", label: "property", needsTarget: true },
+];
 
 interface Pair {
   key: string;
@@ -45,6 +64,14 @@ export function App() {
   const [override, setOverride] = useState<BodyType | "AUTO">("AUTO");
   const [saveName, setSaveName] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+
+  // --- run-cases / assertions (slice 3) ---
+  const [scriptPath, setScriptPath] = useState<string | null>(null);
+  const [assertions, setAssertions] = useState<Assertion[]>([]);
+  const [caseName, setCaseName] = useState("");
+  const [caseSaved, setCaseSaved] = useState<string | null>(null);
+  const [report, setReport] = useState<CaseReport | null>(null);
+  const [suite, setSuite] = useState<CaseReport[] | null>(null);
 
   // --- debug state ---
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -189,6 +216,7 @@ export function App() {
     if (!path) return;
     try {
       setScript(await getScript(path));
+      setScriptPath(path);
     } catch (e) {
       setError(String(e));
     }
@@ -226,6 +254,80 @@ export function App() {
     }
   }
 
+  async function loadCase(name: string) {
+    if (!name) return;
+    setError(null);
+    try {
+      const c = await getCase(name);
+      setScript(await getScript(c.script));
+      setScriptPath(c.script);
+      setBody(c.message?.body ?? "");
+      setContentType(c.message?.contentType ?? "");
+      setHeaders(toPairs(c.message?.headers ?? {}));
+      setProperties(toPairs(c.message?.properties ?? {}));
+      setAssertions(c.assertions ?? []);
+      setCaseName(name);
+      setReport(null);
+      setSuite(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  function currentCase() {
+    return {
+      name: caseName.trim(),
+      script: scriptPath ?? "",
+      message: {
+        body,
+        contentType: contentType || null,
+        headers: toRecord(headers),
+        properties: toRecord(properties),
+      },
+      assertions,
+    };
+  }
+
+  async function saveCurrentCase() {
+    if (!caseName.trim()) return;
+    if (!scriptPath) {
+      setError("Load a script from the workspace first — a case binds to a saved script file.");
+      return;
+    }
+    setError(null);
+    try {
+      await saveCase(currentCase());
+      setCaseSaved(caseName.trim());
+      setWorkspace(await getWorkspace());
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function runCurrentCase() {
+    if (!scriptPath) {
+      setError("Load a script from the workspace first — a case binds to a saved script file.");
+      return;
+    }
+    setError(null);
+    setSuite(null);
+    try {
+      setReport(await runCase(currentCase()));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function runSuite() {
+    setError(null);
+    setReport(null);
+    try {
+      setSuite(await runAllCases());
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function run() {
     setRunning(true);
     setError(null);
@@ -238,6 +340,8 @@ export function App() {
         properties: toRecord(properties),
       });
       setResult(r);
+      setReport(null);
+      setSuite(null);
       setOverride("AUTO");
     } catch (e) {
       setError(String(e));
@@ -268,6 +372,9 @@ export function App() {
             🐞 Debug
           </button>
         )}
+        <button className="debug" onClick={runSuite} disabled={debugging} title="Run all saved cases">
+          ✓ Run all cases
+        </button>
         <button className="run" onClick={run} disabled={running || debugging}>
           {running ? "Running…" : "▶ Run"}
         </button>
@@ -307,6 +414,16 @@ export function App() {
             <button onClick={saveFixture} disabled={!saveName.trim()}>Save as fixture</button>
             {saved && <span className="savedok">saved “{saved}”</span>}
           </div>
+
+          <Picker label="Case" options={workspace?.cases ?? []} onPick={loadCase} placeholder="load a saved test case…" />
+          <Assertions assertions={assertions} onChange={setAssertions} />
+
+          <div className="savefixture casebar">
+            <input placeholder="case name…" value={caseName} onChange={(e) => { setCaseName(e.target.value); setCaseSaved(null); }} />
+            <button onClick={saveCurrentCase} disabled={!caseName.trim()}>Save case</button>
+            <button onClick={runCurrentCase} className="runcase">Run case</button>
+            {caseSaved && <span className="savedok">saved “{caseSaved}”</span>}
+          </div>
         </section>
 
         <section className="right">
@@ -319,10 +436,14 @@ export function App() {
               output={debugOutput}
               onSelectFrame={loadFrameVars}
             />
+          ) : suite ? (
+            <SuiteView reports={suite} />
+          ) : report ? (
+            <CaseReportView report={report} />
           ) : result ? (
             <Output result={result} override={override} setOverride={setOverride} />
           ) : (
-            !error && <div className="placeholder">Run a script, or set breakpoints and Debug.</div>
+            !error && <div className="placeholder">Run a script, add assertions and Run case, or Debug.</div>
           )}
         </section>
       </div>
@@ -419,6 +540,110 @@ function KeyValues(props: { title: string; pairs: Pair[]; onChange: (p: Pair[]) 
           <button onClick={() => onChange(pairs.filter((_, idx) => idx !== i))}>✕</button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function Assertions(props: { assertions: Assertion[]; onChange: (a: Assertion[]) => void }) {
+  const { assertions, onChange } = props;
+  function update(i: number, patch: Partial<Assertion>) {
+    onChange(assertions.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+  }
+  return (
+    <div className="kv">
+      <div className="kvhead">
+        <span className="fieldlabel">Assertions</span>
+        <button onClick={() => onChange([...assertions, { kind: "BODY_EQUALS", target: null, expected: "" }])}>+ add</button>
+      </div>
+      {assertions.map((a, i) => {
+        const spec = ASSERTION_KINDS.find((k) => k.kind === a.kind);
+        return (
+          <div className="assertrow" key={i}>
+            <select value={a.kind} onChange={(e) => update(i, { kind: e.target.value as AssertionKind })}>
+              {ASSERTION_KINDS.map((k) => (
+                <option key={k.kind} value={k.kind}>{k.label}</option>
+              ))}
+            </select>
+            {spec?.needsTarget && (
+              <input placeholder="name" value={a.target ?? ""} onChange={(e) => update(i, { target: e.target.value })} />
+            )}
+            <input placeholder="expected" value={a.expected} onChange={(e) => update(i, { expected: e.target.value })} />
+            <button onClick={() => onChange(assertions.filter((_, idx) => idx !== i))}>✕</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function assertionLabel(a: Assertion): string {
+  const spec = ASSERTION_KINDS.find((k) => k.kind === a.kind);
+  const base = spec?.label ?? a.kind;
+  return spec?.needsTarget ? `${base} ${a.target ?? ""} == ${a.expected}` : `${base} ${a.expected}`;
+}
+
+function CaseReportView(props: { report: CaseReport }) {
+  const { report } = props;
+  return (
+    <div className="output">
+      <div className="statusrow">
+        <span className={`status ${report.passed ? "ok" : "exception"}`}>{report.passed ? "PASS" : "FAIL"}</span>
+        <span className="meta">
+          {report.name || "case"} · {report.assertions.filter((a) => a.passed).length}/{report.assertions.length} assertions ·
+          run {report.result.status}
+        </span>
+      </div>
+
+      <div className="panel">
+        <div className="paneltitle">Assertions</div>
+        <table className="diff asserttable">
+          <tbody>
+            {report.assertions.map((ar, i) => (
+              <tr key={i} className={ar.passed ? "assertpass" : "assertfail"}>
+                <td className="amark">{ar.passed ? "✓" : "✕"}</td>
+                <td className="dk">{assertionLabel(ar.assertion)}</td>
+                <td className="dv">{ar.passed ? "" : `got: ${ar.actual ?? "—"}`}</td>
+              </tr>
+            ))}
+            {report.assertions.length === 0 && (
+              <tr><td className="muted" style={{ padding: "8px 12px" }}>no assertions — add some to check output</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Output result={report.result} override="AUTO" setOverride={() => {}} />
+    </div>
+  );
+}
+
+function SuiteView(props: { reports: CaseReport[] }) {
+  const passed = props.reports.filter((r) => r.passed).length;
+  return (
+    <div className="output">
+      <div className="statusrow">
+        <span className={`status ${passed === props.reports.length ? "ok" : "exception"}`}>
+          {passed === props.reports.length ? "ALL PASS" : "FAILURES"}
+        </span>
+        <span className="meta">{passed}/{props.reports.length} cases passed</span>
+      </div>
+      <div className="panel">
+        <div className="paneltitle">Cases</div>
+        <table className="diff asserttable">
+          <tbody>
+            {props.reports.map((r, i) => (
+              <tr key={i} className={r.passed ? "assertpass" : "assertfail"}>
+                <td className="amark">{r.passed ? "✓" : "✕"}</td>
+                <td className="dk">{r.name}</td>
+                <td className="dv">{r.assertions.filter((a) => a.passed).length}/{r.assertions.length} · {r.result.status}</td>
+              </tr>
+            ))}
+            {props.reports.length === 0 && (
+              <tr><td className="muted" style={{ padding: "8px 12px" }}>no saved cases in the workspace</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

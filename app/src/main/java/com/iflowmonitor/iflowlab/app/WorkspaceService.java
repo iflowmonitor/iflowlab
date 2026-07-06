@@ -1,5 +1,8 @@
 package com.iflowmonitor.iflowlab.app;
 
+import com.iflowmonitor.iflowlab.app.cases.MessageSpec;
+import com.iflowmonitor.iflowlab.app.cases.RunCase;
+import com.iflowmonitor.iflowlab.engine.assertions.Assertion;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -7,6 +10,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -156,6 +160,101 @@ public class WorkspaceService {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /** Names of the saved run-cases ({@code cases/<name>.yaml}), without extension. */
+    public List<String> listCases() {
+        Path dir = root.resolve("cases");
+        if (!Files.isDirectory(dir)) {
+            return List.of();
+        }
+        try (Stream<Path> list = Files.list(dir)) {
+            return list.filter(Files::isRegularFile)
+                    .map(p -> p.getFileName().toString())
+                    .filter(n -> n.endsWith(".yaml"))
+                    .map(n -> n.substring(0, n.length() - ".yaml".length()))
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** Persists a run-case as {@code cases/<name>.yaml}: script + inline message + assertions (slice 3). */
+    public void saveCase(RunCase runCase) {
+        validateName(runCase.name());
+        Path file = resolve("cases/" + runCase.name() + ".yaml");
+        try {
+            Files.createDirectories(file.getParent());
+
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("script", runCase.script());
+
+            MessageSpec msg = runCase.message();
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("body", msg == null || msg.body() == null ? "" : msg.body());
+            if (msg != null && msg.contentType() != null && !msg.contentType().isBlank()) {
+                message.put("contentType", msg.contentType());
+            }
+            message.put("headers", msg == null || msg.headers() == null ? Map.of() : msg.headers());
+            message.put("properties", msg == null || msg.properties() == null ? Map.of() : msg.properties());
+            meta.put("message", message);
+
+            List<Map<String, Object>> assertions = new ArrayList<>();
+            for (Assertion a : runCase.assertions()) {
+                Map<String, Object> am = new LinkedHashMap<>();
+                am.put("kind", a.kind().name());
+                if (a.target() != null && !a.target().isBlank()) {
+                    am.put("target", a.target());
+                }
+                am.put("expected", a.expected() == null ? "" : a.expected());
+                assertions.add(am);
+            }
+            meta.put("assertions", assertions);
+
+            DumperOptions opts = new DumperOptions();
+            opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            opts.setPrettyFlow(true);
+            Files.writeString(file, new Yaml(opts).dump(meta), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public RunCase readCase(String name) {
+        Path file = resolve("cases/" + name + ".yaml");
+        Map<String, Object> meta = new Yaml().load(read(file));
+        if (meta == null) {
+            throw new IllegalArgumentException("empty case: " + name);
+        }
+        String script = meta.get("script") == null ? null : meta.get("script").toString();
+
+        MessageSpec message = null;
+        if (meta.get("message") instanceof Map<?, ?> m) {
+            Map<String, Object> mm = (Map<String, Object>) m;
+            String body = mm.get("body") == null ? "" : mm.get("body").toString();
+            String contentType = mm.get("contentType") == null ? null : mm.get("contentType").toString();
+            Map<String, Object> headers = mm.get("headers") instanceof Map<?, ?> h
+                    ? new LinkedHashMap<>((Map<String, Object>) h) : new LinkedHashMap<>();
+            Map<String, Object> properties = mm.get("properties") instanceof Map<?, ?> pr
+                    ? new LinkedHashMap<>((Map<String, Object>) pr) : new LinkedHashMap<>();
+            message = new MessageSpec(body, contentType, headers, properties);
+        }
+
+        List<Assertion> assertions = new ArrayList<>();
+        if (meta.get("assertions") instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> a) {
+                    Map<String, Object> am = (Map<String, Object>) a;
+                    Assertion.Kind kind = Assertion.Kind.valueOf(am.get("kind").toString());
+                    String target = am.get("target") == null ? null : am.get("target").toString();
+                    String expected = am.get("expected") == null ? "" : am.get("expected").toString();
+                    assertions.add(new Assertion(kind, target, expected));
+                }
+            }
+        }
+        return new RunCase(name, script, message, assertions);
     }
 
     private Path resolve(String relPath) {
