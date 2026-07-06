@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { getMessage, getScript, getWorkspace, runScript } from "./api";
+import { getMessage, getScript, getWorkspace, runScript, saveMessage } from "./api";
 import { renderBody } from "./format";
 import type { BodyType, RunResult, WorkspaceInfo } from "./types";
 
@@ -42,6 +42,8 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<BodyType | "AUTO">("AUTO");
+  const [saveName, setSaveName] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
 
   useEffect(() => {
     getWorkspace().then(setWorkspace).catch(() => setWorkspace(null));
@@ -64,6 +66,25 @@ export function App() {
       setContentType(m.contentType ?? "");
       setHeaders(toPairs(m.headers));
       setProperties(toPairs(m.properties));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function saveFixture() {
+    if (!saveName.trim()) return;
+    setError(null);
+    try {
+      await saveMessage({
+        name: saveName.trim(),
+        body,
+        contentType: contentType || null,
+        headers: toRecord(headers),
+        properties: toRecord(properties),
+      });
+      setSaved(saveName.trim());
+      setSaveName("");
+      setWorkspace(await getWorkspace());
     } catch (e) {
       setError(String(e));
     }
@@ -139,6 +160,21 @@ export function App() {
 
           <KeyValues title="Headers" pairs={headers} onChange={setHeaders} />
           <KeyValues title="Properties" pairs={properties} onChange={setProperties} />
+
+          <div className="savefixture">
+            <input
+              placeholder="fixture name…"
+              value={saveName}
+              onChange={(e) => {
+                setSaveName(e.target.value);
+                setSaved(null);
+              }}
+            />
+            <button onClick={saveFixture} disabled={!saveName.trim()}>
+              Save as fixture
+            </button>
+            {saved && <span className="savedok">saved “{saved}”</span>}
+          </div>
         </section>
 
         <section className="right">

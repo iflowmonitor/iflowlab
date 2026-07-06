@@ -29,3 +29,21 @@ export async function getMessage(name: string): Promise<MessageFixture> {
   if (!res.ok) throw new Error(`message: HTTP ${res.status}`);
   return res.json();
 }
+
+export interface SaveMessage {
+  name: string;
+  body: string;
+  contentType: string | null;
+  headers: Record<string, unknown>;
+  properties: Record<string, unknown>;
+}
+
+export async function saveMessage(dto: SaveMessage): Promise<MessageFixture> {
+  const res = await fetch("/workspace/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) throw new Error(`save: HTTP ${res.status}`);
+  return res.json();
+}

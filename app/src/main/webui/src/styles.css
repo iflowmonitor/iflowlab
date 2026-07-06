@@ -76,6 +76,12 @@ body {
 .kvhead button, .kvrow button { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
 .kvrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 6px; }
 
+.savefixture { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.savefixture input { flex: 1; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font-family: var(--mono); font-size: 12px; }
+.savefixture button { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+.savefixture button:disabled { opacity: 0.5; cursor: default; }
+.savedok { color: var(--ok); font-size: 12px; }
+
 .right { background: var(--bg); }
 .placeholder, .muted { color: var(--muted); }
 .placeholder { padding: 40px; text-align: center; }

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -66,6 +67,56 @@ public class WorkspaceService {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /** Persists a {@code messages/<name>/} fixture: a body file (extension by content-type) + message.yaml (R5). */
+    public void saveMessage(
+            String name, String body, String contentType, Map<String, Object> headers, Map<String, Object> properties) {
+        validateName(name);
+        Path dir = resolve("messages/" + name);
+        try {
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve("body." + extForContentType(contentType)),
+                    body == null ? "" : body, StandardCharsets.UTF_8);
+
+            Map<String, Object> meta = new LinkedHashMap<>();
+            if (contentType != null && !contentType.isBlank()) {
+                meta.put("contentType", contentType);
+            }
+            meta.put("headers", headers == null ? Map.of() : headers);
+            meta.put("properties", properties == null ? Map.of() : properties);
+
+            DumperOptions opts = new DumperOptions();
+            opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            opts.setPrettyFlow(true);
+            Files.writeString(dir.resolve("message.yaml"), new Yaml(opts).dump(meta), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static void validateName(String name) {
+        // A fixture name is a single path segment — no separators or traversal.
+        if (name == null || name.isBlank() || name.contains("/") || name.contains("\\") || name.contains("..")) {
+            throw new IllegalArgumentException("invalid fixture name: " + name);
+        }
+    }
+
+    private static String extForContentType(String contentType) {
+        if (contentType == null) {
+            return "txt";
+        }
+        String ct = contentType.toLowerCase();
+        if (ct.contains("json")) {
+            return "json";
+        }
+        if (ct.contains("xml")) {
+            return "xml";
+        }
+        if (ct.startsWith("text/")) {
+            return "txt";
+        }
+        return "bin";
     }
 
     @SuppressWarnings("unchecked")

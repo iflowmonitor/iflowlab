@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,6 +39,30 @@ class WorkspaceServiceTest {
     void rejectsPathTraversal_outsideWorkspace(@TempDir Path ws) {
         WorkspaceService svc = new WorkspaceService(ws.toString());
         assertThatThrownBy(() -> svc.readScript("../secrets.txt"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void savesMessageFixture_asBodyFileAndYaml_thenReadsItBack(@TempDir Path ws) {
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+
+        svc.saveMessage("neworder", "{\"a\":1}", "application/json",
+                Map.of("SenderId", "ACME"), Map.of("attempt", 2));
+
+        // Body written with a content-type-appropriate extension; listed; round-trips.
+        assertThat(Files.exists(ws.resolve("messages/neworder/body.json"))).isTrue();
+        assertThat(svc.listMessages()).contains("neworder");
+        MessageFixture fx = svc.readMessage("neworder");
+        assertThat(fx.body()).isEqualTo("{\"a\":1}");
+        assertThat(fx.contentType()).isEqualTo("application/json");
+        assertThat(fx.headers()).containsEntry("SenderId", "ACME");
+        assertThat(fx.properties()).containsEntry("attempt", 2);
+    }
+
+    @Test
+    void saveMessage_rejectsBadName(@TempDir Path ws) {
+        WorkspaceService svc = new WorkspaceService(ws.toString());
+        assertThatThrownBy(() -> svc.saveMessage("../evil", "x", "text/plain", Map.of(), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }
