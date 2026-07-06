@@ -535,7 +535,7 @@ export function App() {
 
       <div className="columns">
         <section className="left">
-          <Picker label="Script" options={workspace?.scripts ?? []} onPick={loadScript} placeholder="open a .groovy from workspace…" />
+          <Picker label="Script" options={workspace?.scripts ?? []} onPick={loadScript} placeholder="open a .groovy from workspace…" value={scriptPath ?? ""} />
           {pendingSampleKind && (
             <div className="samplebar">
               <span>
@@ -707,12 +707,18 @@ function DebugView(props: {
   );
 }
 
-function Picker(props: { label: string; options: string[]; onPick: (v: string) => void; placeholder: string }) {
+function Picker(props: { label: string; options: string[]; onPick: (v: string) => void; placeholder: string; value?: string }) {
+  // Controlled when `value` is supplied, so the shown selection tracks state (e.g. the
+  // Script picker falls back to its placeholder when the editor holds an unsaved sample).
+  const controlled = props.value !== undefined;
   return (
     <div className="picker">
       <span className="fieldlabel">{props.label}</span>
-      <select defaultValue="" onChange={(e) => props.onPick(e.target.value)}>
-        <option value="" disabled>{props.placeholder}</option>
+      <select
+        {...(controlled ? { value: props.value } : { defaultValue: "" })}
+        onChange={(e) => props.onPick(e.target.value)}
+      >
+        <option value="">{props.placeholder}</option>
         {props.options.map((o) => (
           <option key={o} value={o}>{o}</option>
         ))}
