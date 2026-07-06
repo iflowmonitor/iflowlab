@@ -28,15 +28,41 @@ import org.yaml.snakeyaml.Yaml;
 @ApplicationScoped
 public class WorkspaceService {
 
-    private final Path root;
+    private volatile Path root;
+    private final RecentWorkspaces recents;
 
     @Inject
-    public WorkspaceService(@ConfigProperty(name = "iflowlab.workspace") String workspace) {
+    public WorkspaceService(@ConfigProperty(name = "iflowlab.workspace") String workspace, RecentWorkspaces recents) {
+        this.recents = recents;
         this.root = Path.of(workspace).toAbsolutePath().normalize();
+        recents.record(root.toString());
+    }
+
+    /** Back-compat for tests that don't care about recents: keeps the MRU list in-memory. */
+    public WorkspaceService(String workspace) {
+        this(workspace, new RecentWorkspaces((Path) null));
     }
 
     public Path root() {
         return root;
+    }
+
+    /** Switch the active workspace to {@code path}, recording it in the recents list (slice 9). */
+    public void open(String path) {
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("empty workspace path");
+        }
+        Path next = Path.of(path).toAbsolutePath().normalize();
+        if (!Files.isDirectory(next)) {
+            throw new IllegalArgumentException("not a directory: " + path);
+        }
+        this.root = next;
+        recents.record(next.toString());
+    }
+
+    /** Recently opened workspace roots, most-recent first (slice 9). */
+    public List<String> recentWorkspaces() {
+        return recents.list();
     }
 
     /** Runnable scripts anywhere in the workspace ({@code *.groovy}, {@code *.xsl(t)}), as posix paths. */

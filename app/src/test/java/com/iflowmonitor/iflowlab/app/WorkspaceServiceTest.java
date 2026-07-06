@@ -115,6 +115,28 @@ class WorkspaceServiceTest {
     }
 
     @Test
+    void open_switchesRoot_recordsRecents_andRejectsNonDir(@TempDir Path ws) throws Exception {
+        Files.createDirectories(ws.resolve("a/scripts"));
+        Files.writeString(ws.resolve("a/scripts/A.groovy"), "// a");
+        Files.createDirectories(ws.resolve("b/scripts"));
+        Files.writeString(ws.resolve("b/scripts/B.groovy"), "// b");
+
+        RecentWorkspaces recents = new RecentWorkspaces(ws.resolve("recents.txt"));
+        WorkspaceService svc = new WorkspaceService(ws.resolve("a").toString(), recents);
+        assertThat(svc.listScripts()).containsExactly("scripts/A.groovy");
+
+        svc.open(ws.resolve("b").toString());
+        assertThat(svc.listScripts()).containsExactly("scripts/B.groovy");
+        assertThat(svc.root()).isEqualTo(ws.resolve("b").toAbsolutePath().normalize());
+        // Both roots are now in recents, most-recently-opened first.
+        assertThat(svc.recentWorkspaces())
+                .startsWith(ws.resolve("b").toAbsolutePath().normalize().toString());
+
+        assertThatThrownBy(() -> svc.open(ws.resolve("does-not-exist").toString()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void saveCase_rejectsBadName(@TempDir Path ws) {
         WorkspaceService svc = new WorkspaceService(ws.toString());
         RunCase bad = new RunCase("../evil", "X.groovy", new MessageSpec("", null, Map.of(), Map.of()), List.of());

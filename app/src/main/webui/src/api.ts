@@ -18,6 +18,19 @@ export async function getWorkspace(): Promise<WorkspaceInfo> {
   return res.json();
 }
 
+export async function openWorkspace(path: string): Promise<WorkspaceInfo> {
+  const res = await fetch("/workspace/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) {
+    const msg = await res.json().catch(() => null);
+    throw new Error(msg?.error ?? `open workspace: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getScript(path: string): Promise<string> {
   const res = await fetch(`/workspace/script?path=${encodeURIComponent(path)}`);
   if (!res.ok) throw new Error(`script: HTTP ${res.status}`);
