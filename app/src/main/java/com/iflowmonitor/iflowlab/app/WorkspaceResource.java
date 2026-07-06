@@ -19,13 +19,26 @@ public class WorkspaceResource {
     @Inject
     WorkspaceService workspace;
 
-    public record WorkspaceInfo(String root, List<String> scripts, List<String> messages, List<String> cases) {}
+    public record WorkspaceInfo(
+            String root, List<String> scripts, List<String> messages, List<String> cases, List<String> recents) {}
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public WorkspaceInfo info() {
         return new WorkspaceInfo(
-                workspace.root().toString(), workspace.listScripts(), workspace.listMessages(), workspace.listCases());
+                workspace.root().toString(), workspace.listScripts(), workspace.listMessages(), workspace.listCases(),
+                workspace.recentWorkspaces());
+    }
+
+    public record OpenWorkspaceDto(String path) {}
+
+    @POST
+    @Path("/open")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public WorkspaceInfo open(OpenWorkspaceDto dto) {
+        workspace.open(dto.path());
+        return info();
     }
 
     @GET

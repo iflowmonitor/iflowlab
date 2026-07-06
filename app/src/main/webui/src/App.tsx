@@ -6,6 +6,7 @@ import {
   getScript,
   getWorkspace,
   lintScript,
+  openWorkspace,
   runAllCases,
   runCase,
   runScript,
@@ -54,6 +55,13 @@ const SAMPLE_XSLT = `<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/
 
 const SAMPLE_XML = '<order id="42"><item price="10"/><item price="5"/></order>';
 
+// Show a compact tail of a workspace path so the switcher stays readable.
+function shortRoot(root: string): string {
+  const parts = root.split(/[\\/]/).filter(Boolean);
+  const tail = parts.slice(-2).join("/");
+  return parts.length > 2 ? "…/" + tail : tail || root;
+}
+
 function toRecord(pairs: Pair[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const p of pairs) if (p.key.trim()) out[p.key] = p.value;
@@ -79,6 +87,7 @@ export function App() {
   const [override, setOverride] = useState<BodyType | "AUTO">("AUTO");
   const [saveName, setSaveName] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  const [wsPath, setWsPath] = useState("");
 
   // --- run-cases / assertions (slice 3) ---
   const [scriptPath, setScriptPath] = useState<string | null>(null);
@@ -264,6 +273,23 @@ export function App() {
     onTerminated();
   }
 
+  async function openWs(path: string) {
+    if (!path.trim()) return;
+    setError(null);
+    try {
+      const info = await openWorkspace(path.trim());
+      setWorkspace(info);
+      setWsPath("");
+      // The new workspace has its own files — clear stale pickers/results.
+      setScriptPath(null);
+      setResult(null);
+      setReport(null);
+      setSuite(null);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    }
+  }
+
   async function loadScript(path: string) {
     if (!path) return;
     try {
@@ -428,8 +454,28 @@ export function App() {
         <div className="brand">
           iflow<span>lab</span> <em>Groovy workbench</em>
         </div>
-        <div className="ws" title={workspace?.root}>
-          {workspace ? `workspace: ${workspace.root}` : "no workspace"}
+        <div className="wsswitch">
+          <select
+            className="wssel"
+            value=""
+            onChange={(e) => { if (e.target.value) void openWs(e.target.value); }}
+            title={workspace?.root ?? "no workspace"}
+          >
+            <option value="">{workspace ? shortRoot(workspace.root) : "no workspace"}</option>
+            {(workspace?.recents ?? [])
+              .filter((r) => r !== workspace?.root)
+              .map((r) => (
+                <option key={r} value={r}>{shortRoot(r)}</option>
+              ))}
+          </select>
+          <input
+            className="wspath"
+            placeholder="open workspace path…"
+            value={wsPath}
+            onChange={(e) => setWsPath(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void openWs(wsPath); }}
+          />
+          <button className="wsopen" onClick={() => void openWs(wsPath)} disabled={!wsPath.trim() || debugging}>Open</button>
         </div>
         <select className="langsel" value={kind} onChange={(e) => switchKind(e.target.value as EngineKind)} disabled={debugging} title="Engine">
           <option value="groovy">Groovy</option>

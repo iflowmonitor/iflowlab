@@ -66,6 +66,7 @@ export interface WorkspaceInfo {
   scripts: string[];
   messages: string[];
   cases: string[];
+  recents: string[];
 }
 
 export interface MessageFixture {

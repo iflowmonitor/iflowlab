@@ -36,6 +36,11 @@ body {
 .brand span { color: var(--accent); }
 .brand em { color: var(--muted); font-style: normal; font-weight: 400; font-size: 13px; margin-left: 6px; }
 .ws { color: var(--muted); font-size: 12px; font-family: var(--mono); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45vw; }
+.wsswitch { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.wssel { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 8px; font-size: 12px; font-family: var(--mono); max-width: 220px; cursor: pointer; }
+.wspath { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 8px; font-size: 12px; font-family: var(--mono); width: 200px; }
+.wsopen { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+.wsopen:disabled { opacity: 0.5; cursor: default; }
 .run {
   background: var(--accent);
   color: #10233f;
