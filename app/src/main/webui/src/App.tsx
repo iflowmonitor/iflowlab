@@ -90,6 +90,9 @@ export function App() {
   const [saveName, setSaveName] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [wsPath, setWsPath] = useState("");
+  // When switching engines would clobber non-sample content, we hold the target
+  // engine here and ask before replacing the editor (highlighting switches either way).
+  const [pendingSampleKind, setPendingSampleKind] = useState<EngineKind | null>(null);
 
   // --- run-cases / assertions (slice 3) ---
   const [scriptPath, setScriptPath] = useState<string | null>(null);
@@ -298,23 +301,39 @@ export function App() {
       setScript(await getScript(path));
       setScriptPath(path);
       setKind(/\.xslt?$/i.test(path) ? "xslt" : "groovy");
+      setPendingSampleKind(null);
     } catch (e) {
       setError(String(e));
     }
   }
 
-  // Swap the editor to a working sample when toggling engines, but only if it still
-  // holds an untouched sample (never clobber the user's own script).
-  function switchKind(next: EngineKind) {
-    setKind(next);
-    if (next === "xslt" && script === SAMPLE_SCRIPT) {
+  // The editor still holds a starter — a built-in sample or nothing — so replacing it
+  // when the engine changes loses no work.
+  function isSampleOrEmpty(s: string) {
+    return s.trim() === "" || s === SAMPLE_SCRIPT || s === SAMPLE_XSLT;
+  }
+
+  function loadSampleFor(next: EngineKind) {
+    if (next === "xslt") {
       setScript(SAMPLE_XSLT);
       if (!body.trim() || body === "hello world") setBody(SAMPLE_XML);
       if (!contentType.trim() || contentType === "text/plain") setContentType("application/xml");
-      setScriptPath(null);
-    } else if (next === "groovy" && script === SAMPLE_XSLT) {
+    } else {
       setScript(SAMPLE_SCRIPT);
-      setScriptPath(null);
+    }
+    setScriptPath(null);
+  }
+
+  // The engine (and syntax highlighting) always switches. If the editor holds a starter we
+  // swap in the target sample outright; otherwise we ask before clobbering the user's script.
+  function switchKind(next: EngineKind) {
+    if (next === kind) return;
+    setKind(next);
+    if (isSampleOrEmpty(script)) {
+      setPendingSampleKind(null);
+      loadSampleFor(next);
+    } else {
+      setPendingSampleKind(next);
     }
   }
 
@@ -516,7 +535,29 @@ export function App() {
 
       <div className="columns">
         <section className="left">
-          <Picker label="Script" options={workspace?.scripts ?? []} onPick={loadScript} placeholder="open a .groovy from workspace…" />
+          <Picker
+            label={kind === "xslt" ? "Stylesheet" : "Script"}
+            options={(workspace?.scripts ?? []).filter((s) =>
+              kind === "xslt" ? /\.xslt?$/i.test(s) : /\.groovy$/i.test(s),
+            )}
+            onPick={loadScript}
+            placeholder={kind === "xslt" ? "open an .xsl/.xslt from workspace…" : "open a .groovy from workspace…"}
+            value={scriptPath ?? ""}
+          />
+          {pendingSampleKind && (
+            <div className="samplebar">
+              <span>
+                Load the {pendingSampleKind === "xslt" ? "XSLT" : "Groovy"} sample? This replaces the editor content.
+              </span>
+              <button
+                className="samplereplace"
+                onClick={() => { loadSampleFor(pendingSampleKind); setPendingSampleKind(null); }}
+              >
+                Replace with {pendingSampleKind === "xslt" ? "XSLT" : "Groovy"} sample
+              </button>
+              <button onClick={() => setPendingSampleKind(null)}>Keep my text</button>
+            </div>
+          )}
           <div className="editor">
             <Editor
               language={kind === "xslt" ? "xml" : "groovy"}
@@ -674,12 +715,18 @@ function DebugView(props: {
   );
 }
 
-function Picker(props: { label: string; options: string[]; onPick: (v: string) => void; placeholder: string }) {
+function Picker(props: { label: string; options: string[]; onPick: (v: string) => void; placeholder: string; value?: string }) {
+  // Controlled when `value` is supplied, so the shown selection tracks state (e.g. the
+  // Script picker falls back to its placeholder when the editor holds an unsaved sample).
+  const controlled = props.value !== undefined;
   return (
     <div className="picker">
       <span className="fieldlabel">{props.label}</span>
-      <select defaultValue="" onChange={(e) => props.onPick(e.target.value)}>
-        <option value="" disabled>{props.placeholder}</option>
+      <select
+        {...(controlled ? { value: props.value } : { defaultValue: "" })}
+        onChange={(e) => props.onPick(e.target.value)}
+      >
+        <option value="">{props.placeholder}</option>
         {props.options.map((o) => (
           <option key={o} value={o}>{o}</option>
         ))}

@@ -125,7 +125,7 @@ body {
 }
 .picker select { flex: 1; }
 
-.editor { height: 320px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.editor { height: 320px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 
 .body { min-height: 90px; resize: vertical; width: 100%; }
 .ct { width: 100%; }
@@ -165,6 +165,11 @@ body {
 .status.exception { background: #3a1f22; color: var(--err); }
 .status.timeout { background: #3d3320; color: #e0a94a; }
 .status.running { background: #1e3050; color: var(--accent); }
+
+.samplebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 8px; background: #1e3050; border: 1px solid #2c4a78; border-radius: 6px; font-size: 12px; color: var(--fg); }
+.samplebar span { margin-right: auto; }
+.samplebar button { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+.samplebar button.samplereplace { background: var(--accent); color: #10233f; border-color: transparent; font-weight: 600; }
 .meta { color: var(--muted); font-family: var(--mono); font-size: 12px; }
 
 .panel { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; background: var(--bg2); overflow: hidden; }
