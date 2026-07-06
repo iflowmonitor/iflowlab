@@ -14,7 +14,7 @@ import {
 } from "./api";
 import { DapClient, type StackFrame, type Variable } from "./dap";
 import { renderBody } from "./format";
-import type { Assertion, AssertionKind, BodyType, CaseReport, EngineKind, RunResult, WorkspaceInfo } from "./types";
+import type { Assertion, AssertionKind, AttachmentSpec, BodyType, CaseReport, EngineKind, RunResult, WorkspaceInfo } from "./types";
 
 const ASSERTION_KINDS: { kind: AssertionKind; label: string; needsTarget: boolean }[] = [
   { kind: "STATUS", label: "status ==", needsTarget: false },
@@ -72,6 +72,7 @@ export function App() {
   const [contentType, setContentType] = useState("text/plain");
   const [headers, setHeaders] = useState<Pair[]>([]);
   const [properties, setProperties] = useState<Pair[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentSpec[]>([]);
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -297,6 +298,7 @@ export function App() {
       setContentType(m.contentType ?? "");
       setHeaders(toPairs(m.headers));
       setProperties(toPairs(m.properties));
+      setAttachments(m.attachments ?? []);
     } catch (e) {
       setError(String(e));
     }
@@ -312,6 +314,7 @@ export function App() {
         contentType: contentType || null,
         headers: toRecord(headers),
         properties: toRecord(properties),
+        attachments: attachments.filter((a) => a.name.trim()),
       });
       setSaved(saveName.trim());
       setSaveName("");
@@ -405,6 +408,7 @@ export function App() {
         contentType: contentType || null,
         headers: toRecord(headers),
         properties: toRecord(properties),
+        attachments: attachments.filter((a) => a.name.trim()),
         kind,
       });
       setResult(r);
@@ -492,6 +496,7 @@ export function App() {
 
           <KeyValues title="Headers" pairs={headers} onChange={setHeaders} />
           <KeyValues title="Properties" pairs={properties} onChange={setProperties} />
+          <AttachmentsEditor attachments={attachments} onChange={setAttachments} />
 
           <div className="savefixture">
             <input placeholder="fixture name…" value={saveName} onChange={(e) => { setSaveName(e.target.value); setSaved(null); }} />
@@ -622,6 +627,31 @@ function KeyValues(props: { title: string; pairs: Pair[]; onChange: (p: Pair[]) 
           <input placeholder="name" value={p.key} onChange={(e) => update(i, { key: e.target.value })} />
           <input placeholder="value" value={p.value} onChange={(e) => update(i, { value: e.target.value })} />
           <button onClick={() => onChange(pairs.filter((_, idx) => idx !== i))}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AttachmentsEditor(props: { attachments: AttachmentSpec[]; onChange: (a: AttachmentSpec[]) => void }) {
+  const { attachments, onChange } = props;
+  function update(i: number, patch: Partial<AttachmentSpec>) {
+    onChange(attachments.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+  }
+  return (
+    <div className="kv">
+      <div className="kvhead">
+        <span className="fieldlabel">Attachments</span>
+        <button onClick={() => onChange([...attachments, { name: "", body: "", contentType: null }])}>+ add</button>
+      </div>
+      {attachments.map((a, i) => (
+        <div className="attachrow" key={i}>
+          <div className="attachrowtop">
+            <input placeholder="name" value={a.name} onChange={(e) => update(i, { name: e.target.value })} />
+            <input placeholder="content-type" value={a.contentType ?? ""} onChange={(e) => update(i, { contentType: e.target.value || null })} />
+            <button onClick={() => onChange(attachments.filter((_, idx) => idx !== i))}>✕</button>
+          </div>
+          <textarea placeholder="content" value={a.body} onChange={(e) => update(i, { body: e.target.value })} spellCheck={false} />
         </div>
       ))}
     </div>
@@ -772,6 +802,21 @@ function Output(props: { result: RunResult; override: BodyType | "AUTO"; setOver
             </select>
           </div>
           <pre className="bodyout">{rendered}</pre>
+        </div>
+      )}
+
+      {result.attachments.length > 0 && (
+        <div className="panel">
+          <div className="paneltitle">Attachments ({result.attachments.length})</div>
+          {result.attachments.map((a, i) => (
+            <div className="attachout" key={i}>
+              <div className="attachouthead">
+                <span className="attachname">{a.name}</span>
+                <span className="meta">{a.contentType ?? "—"} · {a.size} bytes{a.truncated ? " · truncated" : ""}</span>
+              </div>
+              <pre className="bodyout">{a.inline}</pre>
+            </div>
+          ))}
         </div>
       )}
 

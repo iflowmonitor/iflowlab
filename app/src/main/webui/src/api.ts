@@ -36,6 +36,7 @@ export interface SaveMessage {
   contentType: string | null;
   headers: Record<string, unknown>;
   properties: Record<string, unknown>;
+  attachments: import("./types").AttachmentSpec[];
 }
 
 export async function saveMessage(dto: SaveMessage): Promise<MessageFixture> {

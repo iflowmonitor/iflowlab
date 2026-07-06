@@ -43,14 +43,16 @@ public class WorkspaceResource {
     }
 
     public record SaveMessageDto(
-            String name, String body, String contentType, Map<String, Object> headers, Map<String, Object> properties) {}
+            String name, String body, String contentType, Map<String, Object> headers, Map<String, Object> properties,
+            List<MessageFixture.Attachment> attachments) {}
 
     @POST
     @Path("/message")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public MessageFixture saveMessage(SaveMessageDto dto) {
-        workspace.saveMessage(dto.name(), dto.body(), dto.contentType(), dto.headers(), dto.properties());
+        workspace.saveMessage(dto.name(), dto.body(), dto.contentType(), dto.headers(), dto.properties(),
+                dto.attachments() == null ? List.of() : dto.attachments());
         return workspace.readMessage(dto.name());
     }
 
