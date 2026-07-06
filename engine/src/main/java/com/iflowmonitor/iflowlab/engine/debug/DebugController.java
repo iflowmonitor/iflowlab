@@ -61,6 +61,9 @@ public final class DebugController {
         DebugSession s = session;
         worker = new Thread(() -> {
             DebugRuntime.bind(s);
+            if (request.services() != null) {
+                com.sap.it.api.ITApiFactory.bind(request.services().registry());
+            }
             try {
                 result = script.invokeMethod("processData", message);
                 s.markFinished(null);
@@ -68,6 +71,7 @@ public final class DebugController {
                 s.markFinished(t);
             } finally {
                 DebugRuntime.unbind();
+                com.sap.it.api.ITApiFactory.unbind();
             }
         }, "iflowlab-debug");
         worker.setDaemon(true);

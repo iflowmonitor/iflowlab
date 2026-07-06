@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.iflowmonitor.iflowlab.cpimock.LogEntry;
+import com.iflowmonitor.iflowlab.cpimock.services.CpiServices;
 import com.iflowmonitor.iflowlab.engine.RunRequest;
 import com.iflowmonitor.iflowlab.engine.debug.DebugController;
 import com.iflowmonitor.iflowlab.engine.debug.StackFrameInfo;
@@ -30,13 +31,20 @@ public final class DapDebugSession {
     private final DebugController controller = new DebugController();
     private final Consumer<String> send;
     private final Executor async;
+    private final java.util.function.Supplier<CpiServices> services;
     private final AtomicInteger seq = new AtomicInteger();
     private final Set<Integer> breakpoints = new HashSet<>();
     private volatile boolean terminatedSent;
 
+    /** Debug a run with no CPI platform services (used by tests). */
     public DapDebugSession(Consumer<String> send, Executor async) {
+        this(send, async, () -> CpiServices.EMPTY);
+    }
+
+    public DapDebugSession(Consumer<String> send, Executor async, java.util.function.Supplier<CpiServices> services) {
         this.send = send;
         this.async = async;
+        this.services = services;
     }
 
     /** Cancel the run when the connection closes (single-session cleanup). */
@@ -88,7 +96,7 @@ public final class DapDebugSession {
                 RunRequest request = new RunRequest(
                         args.path("script").asText(""),
                         body.getBytes(StandardCharsets.UTF_8),
-                        contentType, headers, properties, List.of(), 0L);
+                        contentType, headers, properties, List.of(), 0L, services.get());
                 controller.setBreakpoints(breakpoints);
                 controller.launch(request);
                 respond(reqSeq, command, null);
