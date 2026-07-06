@@ -88,4 +88,39 @@ class DapDebugSessionTest {
         request("continue", "{\"threadId\":1}");
         assertThat(events("terminated")).hasSize(1);
     }
+
+    @Test
+    void launch_withInlineServices_bindsThemForTheDebuggedRun() {
+        // No workspace supplier configured — services arrive in the DAP launch args (SaaS R1).
+        String credScript =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                        + "import com.sap.it.api.ITApiFactory\n"
+                        + "import com.sap.it.api.securestore.SecureStoreService\n"
+                        + "Message processData(Message message) {\n"
+                        + "    def store = ITApiFactory.getService(SecureStoreService.class, null)\n"
+                        + "    def user = store.getUserCredential('Api').getUsername()\n"
+                        + "    message.setBody(user)\n"
+                        + "    return message\n"
+                        + "}\n";
+        request("initialize", "{}");
+        request("setBreakpoints", "{\"breakpoints\":[{\"line\":7}]}");
+        String launchArgs = "{\"script\":" + mapper.valueToTree(credScript) + ",\"body\":\"in\","
+                + "\"services\":{\"credentials\":{\"Api\":{\"username\":\"dap-user\",\"password\":\"pw\"}}}}";
+        request("launch", launchArgs);
+        assertThat(events("stopped")).hasSize(1);
+
+        // At line 7 the local `user` already holds the credential resolved from inline services.
+        request("stackTrace", "{\"threadId\":1}");
+        request("scopes", "{\"frameId\":0}");
+        int varRef = lastResponse("scopes").path("body").path("scopes").get(0).path("variablesReference").asInt();
+        request("variables", "{\"variablesReference\":" + varRef + "}");
+        JsonNode vars = lastResponse("variables").path("body").path("variables");
+        assertThat(vars).anySatisfy(v -> {
+            assertThat(v.path("name").asText()).isEqualTo("user");
+            assertThat(v.path("value").asText()).isEqualTo("dap-user");
+        });
+
+        request("continue", "{\"threadId\":1}");
+        assertThat(events("terminated")).hasSize(1);
+    }
 }

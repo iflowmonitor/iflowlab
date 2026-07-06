@@ -52,6 +52,22 @@ public final class DapDebugSession {
         controller.terminate();
     }
 
+    /**
+     * Services for a launch: an inline {@code services} object in the DAP launch
+     * arguments (stateless runner, SaaS R1) wins over the workspace supplier.
+     */
+    private CpiServices launchServices(JsonNode args) {
+        JsonNode inline = args.path("services");
+        if (inline.isObject()) {
+            try {
+                return mapper.treeToValue(inline, com.iflowmonitor.iflowlab.app.ServicesDto.class).toCpiServices();
+            } catch (Exception e) {
+                // Malformed inline services: fall through to the workspace supplier.
+            }
+        }
+        return services.get();
+    }
+
     public void onRequest(String raw) {
         JsonNode req;
         try {
@@ -96,7 +112,7 @@ public final class DapDebugSession {
                 RunRequest request = new RunRequest(
                         args.path("script").asText(""),
                         body.getBytes(StandardCharsets.UTF_8),
-                        contentType, headers, properties, List.of(), 0L, services.get());
+                        contentType, headers, properties, List.of(), 0L, launchServices(args));
                 controller.setBreakpoints(breakpoints);
                 controller.launch(request);
                 respond(reqSeq, command, null);
