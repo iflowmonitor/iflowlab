@@ -248,6 +248,23 @@ class DebugControllerTest {
     }
 
     @Test
+    void buildResult_capturesPropertiesSetByTheScript() {
+        String script =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                        + "Message processData(Message message) {\n"
+                        + "    message.setProperties([country: 'CZ', testMode: 'false'])\n"
+                        + "    return message\n"
+                        + "}\n";
+        DebugController c = new DebugController();
+        c.launch(RunRequest.ofScriptAndText(script, "in"));
+        assertThat(c.awaitStop(3000)).isFalse(); // no breakpoints → runs to the end
+        assertThat(c.isFinished()).isTrue();
+
+        com.iflowmonitor.iflowlab.engine.RunResult r = c.buildResult();
+        assertThat(r.propertiesAfter()).containsKeys("country", "testMode");
+    }
+
+    @Test
     void setMessageHeaderAndProperty_mutateTheLiveMessage() {
         DebugController c = launchAt(Set.of(5));
         c.setMessageHeader("X-Flag", "on");
