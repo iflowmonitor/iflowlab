@@ -20,6 +20,9 @@ import java.util.Map;
 public final class RunResultBuilder {
 
     private static final int INLINE_CAP_BYTES = 256 * 1024;
+    // Cap on the full body we embed (base64) for download; larger bodies aren't
+    // downloadable from the result (kept out of band to bound the payload).
+    private static final int DOWNLOAD_CAP_BYTES = 16 * 1024 * 1024;
 
     private RunResultBuilder() {}
 
@@ -88,7 +91,13 @@ public final class RunResultBuilder {
         String inline = type == RunResult.BodyType.BINARY
                 ? hexPreview(shown)
                 : new String(shown, StandardCharsets.UTF_8);
-        return new RunResult.BodyView(type, contentType, bytes.length, inline, truncated);
+        // Embed the full bytes only when the inline form can't reconstruct the file:
+        // binary (inline is a hex preview) or a truncated body. Untruncated text
+        // downloads from inline, so no need to double the payload.
+        String downloadBase64 = (type == RunResult.BodyType.BINARY || truncated) && bytes.length <= DOWNLOAD_CAP_BYTES
+                ? java.util.Base64.getEncoder().encodeToString(bytes)
+                : null;
+        return new RunResult.BodyView(type, contentType, bytes.length, inline, truncated, downloadBase64);
     }
 
     private static byte[] bodyBytes(Message out) {

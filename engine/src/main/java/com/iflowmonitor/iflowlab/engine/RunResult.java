@@ -39,13 +39,26 @@ public record RunResult(
     /** An attachment the script left on the message — surfaced after a run (slice 8). */
     public record AttachmentView(String name, String contentType, long size, String inline, boolean truncated) {}
 
-    /** The output body, classified for rendering (R12). {@code inline} is capped; overflow is downloadable. */
+    /**
+     * The output body, classified for rendering (R12). {@code inline} is capped for
+     * display; {@code downloadBase64} carries the full bytes for a faithful download
+     * when the display form isn't enough (binary, or a truncated body) — null when
+     * the client can reconstruct the file from {@code inline} (untruncated text) or
+     * the body is too large to embed.
+     */
     public record BodyView(
             BodyType type,
             String contentType,
             long size,
             String inline,
-            boolean truncated) {}
+            boolean truncated,
+            String downloadBase64) {
+
+        /** Back-compat: no separate downloadable body (client uses {@code inline}). */
+        public BodyView(BodyType type, String contentType, long size, String inline, boolean truncated) {
+            this(type, contentType, size, inline, truncated, null);
+        }
+    }
 
     public enum BodyType {
         XML,
