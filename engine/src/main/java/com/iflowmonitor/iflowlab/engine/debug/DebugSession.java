@@ -38,6 +38,12 @@ public final class DebugSession {
     private final Map<String, String> lastWatchValues = new HashMap<>();
     private final Map<String, Boolean> lastConditionState = new HashMap<>();
 
+    // Pending local-variable overrides set from the paused UI (DAP setVariable).
+    // Consumed one-shot by the instrumentation's applyOverride call right after the
+    // next statement hook, so a value the user typed takes effect for the rest of
+    // the run. Guarded by {@link #lock}.
+    private final Map<String, String> pendingOverrides = new HashMap<>();
+
     private boolean paused;
     private boolean cancelled;
     private boolean finished;
@@ -75,6 +81,57 @@ public final class DebugSession {
         } finally {
             lock.unlock();
         }
+    }
+
+    /** Queue a new value for a local, applied at the next statement (DAP setVariable). */
+    public void setLocalOverride(String name, String value) {
+        lock.lock();
+        try {
+            pendingOverrides.put(name, value);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Consume a pending override for {@code name}, coerced to {@code current}'s
+     * runtime type; returns {@code current} unchanged when there is none. Called by
+     * injected instrumentation on the script thread, once per statement per local.
+     * Only string/number/boolean/char locals are editable — a complex object or
+     * null is left as-is so a mistyped value can never break the running script.
+     */
+    public Object applyOverride(String name, Object current) {
+        lock.lock();
+        try {
+            if (!pendingOverrides.containsKey(name)) {
+                return current;
+            }
+            return coerceOverride(pendingOverrides.remove(name), current);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private static Object coerceOverride(String raw, Object current) {
+        if (raw == null || current == null) {
+            return current;
+        }
+        try {
+            if (current instanceof Integer) return Integer.valueOf(raw.trim());
+            if (current instanceof Long) return Long.valueOf(raw.trim());
+            if (current instanceof Short) return Short.valueOf(raw.trim());
+            if (current instanceof Byte) return Byte.valueOf(raw.trim());
+            if (current instanceof java.math.BigInteger) return new java.math.BigInteger(raw.trim());
+            if (current instanceof java.math.BigDecimal) return new java.math.BigDecimal(raw.trim());
+            if (current instanceof Double) return Double.valueOf(raw.trim());
+            if (current instanceof Float) return Float.valueOf(raw.trim());
+            if (current instanceof Boolean) return Boolean.valueOf(raw.trim());
+            if (current instanceof Character) return raw.isEmpty() ? current : raw.charAt(0);
+            if (current instanceof CharSequence) return raw;
+        } catch (RuntimeException e) {
+            return current; // best-effort: leave the local unchanged on a bad value
+        }
+        return current; // complex object → don't risk a type mismatch
     }
 
     // ---- script-thread side ----

@@ -12,6 +12,7 @@ import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.Variable;
 import org.codehaus.groovy.ast.expr.ArgumentListExpression;
+import org.codehaus.groovy.ast.expr.BinaryExpression;
 import org.codehaus.groovy.ast.expr.ClosureExpression;
 import org.codehaus.groovy.ast.expr.ClosureListExpression;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
@@ -38,6 +39,8 @@ import org.codehaus.groovy.classgen.GeneratorContext;
 import org.codehaus.groovy.control.CompilePhase;
 import org.codehaus.groovy.control.SourceUnit;
 import org.codehaus.groovy.control.customizers.CompilationCustomizer;
+import org.codehaus.groovy.syntax.Token;
+import org.codehaus.groovy.syntax.Types;
 
 /**
  * Rewrites every compiled method/closure body so each original statement is
@@ -97,6 +100,12 @@ public final class InstrumentingCustomizer extends CompilationCustomizer {
             int line = child.getLineNumber();
             if (line > 0) {
                 rewritten.add(hook("onStatement", line, depth, visible));
+                // After the hook (where a pause may have set an override), write any
+                // debugger-set value back into each visible local, so editing a
+                // variable while paused takes effect for the rest of the run.
+                for (Map.Entry<String, Variable> e : visible.entrySet()) {
+                    rewritten.add(applyOverride(e.getKey(), e.getValue()));
+                }
             }
             rewritten.add(instrumentStatement(child, depth, visible));
             registerDeclarations(child, visible);
@@ -221,6 +230,19 @@ public final class InstrumentingCustomizer extends CompilationCustomizer {
         stmt.setLineNumber(line);
         stmt.setColumnNumber(1);
         return stmt;
+    }
+
+    /** {@code name = DebugRuntime.applyOverride('name', name)} — writes a pending edit back. */
+    private Statement applyOverride(String name, Variable var) {
+        VariableExpression target = new VariableExpression(var);
+        target.setAccessedVariable(var);
+        VariableExpression read = new VariableExpression(var);
+        read.setAccessedVariable(var);
+        StaticMethodCallExpression call = staticCall(
+                "applyOverride",
+                new ArgumentListExpression(new ConstantExpression(name), read));
+        BinaryExpression assign = new BinaryExpression(target, Token.newSymbol(Types.ASSIGN, -1, -1), call);
+        return new ExpressionStatement(assign);
     }
 
     private MapExpression localsMap(Map<String, Variable> visible) {

@@ -181,6 +181,32 @@ public final class DebugController {
         return result;
     }
 
+    /** The message being processed (valid while paused) — for header/property/attachment views. */
+    public Message message() {
+        return seededMessage;
+    }
+
+    /** Set a header on the live message from the paused UI (DAP setVariable). */
+    public void setMessageHeader(String name, String value) {
+        if (seededMessage != null) {
+            seededMessage.setHeader(name, value);
+        }
+    }
+
+    /** Set a property on the live message from the paused UI (DAP setVariable). */
+    public void setMessageProperty(String name, String value) {
+        if (seededMessage != null) {
+            seededMessage.setProperty(name, value);
+        }
+    }
+
+    /** Queue a new value for a local, applied at the next statement (DAP setVariable). */
+    public void setLocalOverride(String name, String value) {
+        if (session != null) {
+            session.setLocalOverride(name, value);
+        }
+    }
+
     /**
      * The finished run's full {@link RunResult} — the same envelope a plain run
      * returns (body, header/property diff, attachments, logs), so the workbench

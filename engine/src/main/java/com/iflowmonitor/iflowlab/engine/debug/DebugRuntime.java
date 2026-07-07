@@ -73,6 +73,16 @@ public final class DebugRuntime {
         session.onDataWatch(line, effectiveDepth(lexicalDepth), snapshot(line, locals));
     }
 
+    /**
+     * Injected right after each statement hook, once per visible local:
+     * {@code x = applyOverride('x', x)}. Returns the debugger-set value (coerced)
+     * when one is pending for {@code name}, otherwise {@code current} unchanged.
+     */
+    public static Object applyOverride(String name, Object current) {
+        DebugSession session = CURRENT.get();
+        return session == null ? current : session.applyOverride(name, current);
+    }
+
     private static int effectiveDepth(int lexicalDepth) {
         return STACK.get().size() + lexicalDepth;
     }

@@ -103,6 +103,7 @@ public final class DapDebugSession {
                 caps.put("supportsConfigurationDoneRequest", true);
                 caps.put("supportsTerminateRequest", true);
                 caps.put("supportsDataBreakpoints", true);
+                caps.put("supportsSetVariable", true);
                 respond(reqSeq, command, caps);
                 event("initialized", null);
             }
@@ -197,6 +198,20 @@ public final class DapDebugSession {
             case "stackTrace" -> respond(reqSeq, command, stackTraceBody());
             case "scopes" -> respond(reqSeq, command, scopesBody(args));
             case "variables" -> respond(reqSeq, command, variablesBody(args));
+            case "setVariable" -> {
+                // Edit a paused value: locals apply at the next statement (override),
+                // message headers/properties mutate the live message immediately.
+                int kind = args.path("variablesReference").asInt() % 10;
+                String name = args.path("name").asText("");
+                String value = args.path("value").asText("");
+                switch (kind) {
+                    case SCOPE_HEADERS -> controller.setMessageHeader(name, value);
+                    case SCOPE_PROPERTIES -> controller.setMessageProperty(name, value);
+                    case SCOPE_LOCALS -> controller.setLocalOverride(name, value);
+                    default -> { /* attachments are read-only */ }
+                }
+                respond(reqSeq, command, mapper.createObjectNode().put("value", value));
+            }
             case "continue" -> {
                 controller.resume();
                 respond(reqSeq, command, mapper.createObjectNode().put("allThreadsContinued", true));
@@ -268,34 +283,73 @@ public final class DapDebugSession {
         return body;
     }
 
+    // A variablesReference encodes frameId and scope kind: ref = frameId * 10 + kind.
+    private static final int SCOPE_LOCALS = 1;
+    private static final int SCOPE_HEADERS = 2;
+    private static final int SCOPE_PROPERTIES = 3;
+    private static final int SCOPE_ATTACHMENTS = 4;
+
     private ObjectNode scopesBody(JsonNode args) {
         int frameId = args.path("frameId").asInt();
         ObjectNode body = mapper.createObjectNode();
         ArrayNode scopes = body.putArray("scopes");
-        ObjectNode locals = mapper.createObjectNode();
-        locals.put("name", "Locals");
-        locals.put("variablesReference", frameId + 1); // nonzero; decode as frameId in variables
-        locals.put("expensive", false);
-        scopes.add(locals);
+        scopes.add(scope("Locals", frameId * 10 + SCOPE_LOCALS));
+        scopes.add(scope("Headers", frameId * 10 + SCOPE_HEADERS));
+        scopes.add(scope("Properties", frameId * 10 + SCOPE_PROPERTIES));
+        scopes.add(scope("Attachments", frameId * 10 + SCOPE_ATTACHMENTS));
         return body;
+    }
+
+    private ObjectNode scope(String name, int ref) {
+        ObjectNode s = mapper.createObjectNode();
+        s.put("name", name);
+        s.put("variablesReference", ref);
+        s.put("expensive", false);
+        return s;
     }
 
     private ObjectNode variablesBody(JsonNode args) {
         int ref = args.path("variablesReference").asInt();
-        int frameId = ref - 1;
-        List<StackFrameInfo> frames = controller.stack();
+        int frameId = ref / 10;
+        int kind = ref % 10;
         ObjectNode body = mapper.createObjectNode();
         ArrayNode vars = body.putArray("variables");
-        if (frameId >= 0 && frameId < frames.size()) {
-            for (Map.Entry<String, Object> e : frames.get(frameId).locals().entrySet()) {
-                ObjectNode v = mapper.createObjectNode();
-                v.put("name", e.getKey());
-                v.put("value", String.valueOf(e.getValue()));
-                v.put("variablesReference", 0);
-                vars.add(v);
+        com.sap.gateway.ip.core.customdev.util.Message msg = controller.message();
+        switch (kind) {
+            case SCOPE_LOCALS -> {
+                List<StackFrameInfo> frames = controller.stack();
+                if (frameId >= 0 && frameId < frames.size()) {
+                    for (Map.Entry<String, Object> e : frames.get(frameId).locals().entrySet()) {
+                        vars.add(variable(e.getKey(), String.valueOf(e.getValue())));
+                    }
+                }
             }
+            case SCOPE_HEADERS -> {
+                if (msg != null) {
+                    msg.getHeaders().forEach((k, v) -> vars.add(variable(k, String.valueOf(v))));
+                }
+            }
+            case SCOPE_PROPERTIES -> {
+                if (msg != null) {
+                    msg.getProperties().forEach((k, v) -> vars.add(variable(k, String.valueOf(v))));
+                }
+            }
+            case SCOPE_ATTACHMENTS -> {
+                if (msg != null && msg.getAttachments() != null) {
+                    msg.getAttachments().forEach((k, dh) -> vars.add(variable(k, dh.getContentType())));
+                }
+            }
+            default -> { /* unknown scope */ }
         }
         return body;
+    }
+
+    private ObjectNode variable(String name, String value) {
+        ObjectNode v = mapper.createObjectNode();
+        v.put("name", name);
+        v.put("value", value);
+        v.put("variablesReference", 0);
+        return v;
     }
 
     private void sendTerminated() {

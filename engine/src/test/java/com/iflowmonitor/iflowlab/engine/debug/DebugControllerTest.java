@@ -3,6 +3,7 @@ package com.iflowmonitor.iflowlab.engine.debug;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.iflowmonitor.iflowlab.engine.RunRequest;
+import com.sap.gateway.ip.core.customdev.util.Message;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -218,6 +219,42 @@ class DebugControllerTest {
 
         assertThat(c.awaitStop(3000)).isFalse();
         assertThat(c.isFinished()).isTrue();
+    }
+
+    @Test
+    void setLocalOverride_appliedAtTheNextStatement_changesTheRunningValue() {
+        // Pause where x==1, override it to 5, then resume: the override is written back
+        // before the next statement runs, so `def y = x` sees 5 and the body is "5".
+        String script =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"  // 1
+                        + "Message processData(Message message) {\n"      // 2
+                        + "    def x = 1\n"                                // 3
+                        + "    def y = x\n"                               // 4  <- breakpoint
+                        + "    message.setBody(y.toString())\n"           // 5
+                        + "    return message\n"                          // 6
+                        + "}\n";
+        DebugController c = new DebugController();
+        c.setBreakpoints(Set.of(4));
+        c.launch(RunRequest.ofScriptAndText(script, "in"));
+        assertThat(c.awaitStop(3000)).isTrue();
+        assertThat(c.stack().get(0).locals()).containsEntry("x", 1);
+
+        c.setLocalOverride("x", "5");
+        c.resume();
+
+        assertThat(c.awaitStop(3000)).isFalse();
+        assertThat(c.isFinished()).isTrue();
+        assertThat(((Message) c.result()).getBody(String.class)).isEqualTo("5");
+    }
+
+    @Test
+    void setMessageHeaderAndProperty_mutateTheLiveMessage() {
+        DebugController c = launchAt(Set.of(5));
+        c.setMessageHeader("X-Flag", "on");
+        c.setMessageProperty("retry", "3");
+
+        assertThat(c.message().getHeaders()).containsEntry("X-Flag", "on");
+        assertThat(c.message().getProperties()).containsEntry("retry", "3");
     }
 
     @Test

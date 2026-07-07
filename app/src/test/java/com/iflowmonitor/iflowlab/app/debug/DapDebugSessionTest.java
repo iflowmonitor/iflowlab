@@ -259,6 +259,47 @@ class DapDebugSessionTest {
     }
 
     @Test
+    void setVariable_overridesALocalAndSetsAMessageHeader_whilePaused() {
+        String script =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"                       // 1
+                        + "Message processData(Message message) {\n"                           // 2
+                        + "    def x = 1\n"                                                     // 3
+                        + "    def y = x\n"                                                     // 4  <- breakpoint
+                        + "    message.setBody(y.toString() + ':' + message.getHeader('H', String))\n" // 5
+                        + "    return message\n"                                                // 6
+                        + "}\n";
+        request("initialize", "{}");
+        assertThat(lastResponse("initialize").path("body").path("supportsSetVariable").asBoolean()).isTrue();
+        request("setBreakpoints", "{\"breakpoints\":[{\"line\":4}]}");
+        request("launch", "{\"script\":" + mapper.valueToTree(script) + ",\"body\":\"in\"}");
+        assertThat(events("stopped")).hasSize(1);
+
+        // scopes now returns four: Locals, Headers, Properties, Attachments.
+        request("stackTrace", "{\"threadId\":1}");
+        request("scopes", "{\"frameId\":0}");
+        JsonNode scopes = lastResponse("scopes").path("body").path("scopes");
+        assertThat(scopes).hasSize(4);
+        int localsRef = scopes.get(0).path("variablesReference").asInt();
+        int headersRef = scopes.get(1).path("variablesReference").asInt();
+
+        request("setVariable", "{\"variablesReference\":" + localsRef + ",\"name\":\"x\",\"value\":\"5\"}");
+        request("setVariable", "{\"variablesReference\":" + headersRef + ",\"name\":\"H\",\"value\":\"hi\"}");
+
+        // The header change is visible immediately in the Headers scope.
+        request("variables", "{\"variablesReference\":" + headersRef + "}");
+        assertThat(lastResponse("variables").path("body").path("variables")).anySatisfy(v -> {
+            assertThat(v.path("name").asText()).isEqualTo("H");
+            assertThat(v.path("value").asText()).isEqualTo("hi");
+        });
+
+        request("continue", "{\"threadId\":1}");
+        assertThat(events("terminated")).hasSize(1);
+        // Both edits land: the local override (x→5) and the header (H→hi) → body "5:hi".
+        JsonNode r = events("iflowlabResult").get(0).path("body");
+        assertThat(r.path("body").path("inline").asText()).isEqualTo("5:hi");
+    }
+
+    @Test
     void launch_withInlineServices_bindsThemForTheDebuggedRun() {
         // No workspace supplier configured — services arrive in the DAP launch args (SaaS R1).
         String credScript =
