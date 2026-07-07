@@ -55,19 +55,40 @@ public final class DebugRuntime {
         if (session == null) {
             return;
         }
+        session.onStatement(line, effectiveDepth(lexicalDepth), snapshot(line, locals));
+    }
+
+    /**
+     * Called <em>after</em> every mutating statement, with the locals it left in
+     * scope. Only data breakpoints are evaluated here (not line breakpoints or
+     * stepping), so a watched value's change is caught on the very line that
+     * caused it — while the variable is still in scope — rather than one statement
+     * later (which may already be out of the declaring block).
+     */
+    public static void afterStatement(int line, int lexicalDepth, Map<String, Object> locals) {
+        DebugSession session = CURRENT.get();
+        if (session == null) {
+            return;
+        }
+        session.onDataWatch(line, effectiveDepth(lexicalDepth), snapshot(line, locals));
+    }
+
+    private static int effectiveDepth(int lexicalDepth) {
+        return STACK.get().size() + lexicalDepth;
+    }
+
+    private static List<StackFrameInfo> snapshot(int line, Map<String, Object> locals) {
         Deque<MethodFrame> stack = STACK.get();
         MethodFrame top = stack.peek();
         if (top != null) {
             top.line = line;
             top.locals = locals;
         }
-        int effectiveDepth = stack.size() + lexicalDepth;
-
         List<StackFrameInfo> snapshot = new ArrayList<>(stack.size());
         for (MethodFrame f : stack) { // Deque iterates head→tail = innermost→outermost
             snapshot.add(new StackFrameInfo(f.name, f.line, f.locals));
         }
-        session.onStatement(line, effectiveDepth, snapshot);
+        return snapshot;
     }
 
     private static final class MethodFrame {

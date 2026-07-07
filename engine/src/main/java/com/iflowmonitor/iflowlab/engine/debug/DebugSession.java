@@ -129,6 +129,41 @@ public final class DebugSession {
     }
 
     /**
+     * Called after a mutating statement executes (post-hook). Evaluates only data
+     * breakpoints against the just-produced locals and pauses on the current line
+     * if one fires — so a change/condition stops on the line that caused it, with
+     * the variable still in scope. Line breakpoints and stepping are handled solely
+     * by {@link #onStatement} (the pre-hook), so this never interferes with them.
+     */
+    public void onDataWatch(int line, int depth, List<StackFrameInfo> stack) {
+        lock.lock();
+        try {
+            if (cancelled) {
+                throw new DebugCancelledException();
+            }
+            currentLine = line;
+            currentDepth = depth;
+            currentStack = stack;
+            String dataHit = checkWatches(stack);
+            if (dataHit != null) {
+                stopReason = "data breakpoint";
+                stopDetail = dataHit;
+                paused = true;
+                stepMode = Step.NONE;
+                pausedSignal.signalAll();
+                while (paused && !cancelled) {
+                    resumeSignal.awaitUninterruptibly();
+                }
+                if (cancelled) {
+                    throw new DebugCancelledException();
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * Re-baselines every watched local and returns a human phrase for one that
      * hit this statement, or null. Two modes per watch:
      * <ul>

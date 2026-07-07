@@ -231,6 +231,34 @@ class DapDebugSessionTest {
     }
 
     @Test
+    void dataBreakpoint_armedMidSession_stopsOnASubsequentChange() {
+        // Mirrors the real UI: pause at a line breakpoint, THEN arm a watch from the
+        // docked panel, then continue. The watch must take effect for the rest of the run.
+        String mutating =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                        + "Message processData(Message message) {\n"
+                        + "    def x = 1\n"   // line 3
+                        + "    x = 2\n"       // line 4  <- breakpoint
+                        + "    x = 3\n"       // line 5
+                        + "    message.setBody(x.toString())\n"
+                        + "    return message\n"
+                        + "}\n";
+        request("initialize", "{}");
+        request("setBreakpoints", "{\"breakpoints\":[{\"line\":4}]}");
+        String launchArgs = "{\"script\":" + mapper.valueToTree(mutating) + ",\"body\":\"in\"}";
+        request("launch", launchArgs);
+        assertThat(events("stopped")).hasSize(1); // paused at line 4, x == 1
+
+        // Arm the watch now (mid-session), exactly like the docked panel does.
+        request("setDataBreakpoints", "{\"breakpoints\":[{\"dataId\":\"x\"}]}");
+        request("continue", "{\"threadId\":1}");
+
+        // Baseline is x==2 (first sighting after arming), then x==3 fires the stop.
+        assertThat(events("stopped")).hasSize(2);
+        assertThat(events("stopped").get(1).path("body").path("reason").asText()).isEqualTo("data breakpoint");
+    }
+
+    @Test
     void launch_withInlineServices_bindsThemForTheDebuggedRun() {
         // No workspace supplier configured — services arrive in the DAP launch args (SaaS R1).
         String credScript =

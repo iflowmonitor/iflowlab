@@ -121,10 +121,10 @@ class DebugControllerTest {
         c.setDataBreakpoints(Map.of("x", "")); // empty condition = break on any change
         c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
 
-        // First observed value (x=1 at the line-4 hook) is the baseline, no stop.
-        // x becomes 2, so the next statement boundary (line 5) is where the change shows.
+        // x=1 (line 3) is the baseline; x becomes 2 on line 4, and the post-statement
+        // hook stops on that very line — where the change happened, not the line after.
         assertThat(c.awaitStop(3000)).isTrue();
-        assertThat(c.currentLine()).isEqualTo(5);
+        assertThat(c.currentLine()).isEqualTo(4);
         assertThat(c.stopReason()).isEqualTo("data breakpoint");
         assertThat(c.stopDetail()).isEqualTo("x changed");
         assertThat(c.stack().get(0).locals()).containsEntry("x", 2);
@@ -135,25 +135,25 @@ class DebugControllerTest {
         DebugController c = new DebugController();
         c.setDataBreakpoints(Map.of("x", ""));
         c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
-        assertThat(c.awaitStop(3000)).isTrue(); // line 5, x==2
+        assertThat(c.awaitStop(3000)).isTrue(); // line 4, x==2
 
         c.resume();
-        // x becomes 3 on line 5; the change shows at line 6.
+        // x becomes 3 on line 5 — the post-hook stops there.
         assertThat(c.awaitStop(3000)).isTrue();
-        assertThat(c.currentLine()).isEqualTo(6);
+        assertThat(c.currentLine()).isEqualTo(5);
         assertThat(c.stack().get(0).locals()).containsEntry("x", 3);
     }
 
     @Test
     void conditionalDataBreakpoint_stopsOnFalseToTrueEdge_notEveryHit() {
         // x runs 1 → 2 → 3. Condition ">= 3" is false at 1 and 2, true at 3, so the
-        // FIRST (and only) stop is where x first satisfies it: line 6 (x==3 shows there).
+        // FIRST (and only) stop is the line that makes it true: line 5 (x = 3).
         DebugController c = new DebugController();
         c.setDataBreakpoints(Map.of("x", ">= 3"));
         c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
 
         assertThat(c.awaitStop(3000)).isTrue();
-        assertThat(c.currentLine()).isEqualTo(6);
+        assertThat(c.currentLine()).isEqualTo(5);
         assertThat(c.stopReason()).isEqualTo("data breakpoint");
         assertThat(c.stopDetail()).isEqualTo("x >= 3");
         assertThat(c.stack().get(0).locals()).containsEntry("x", 3);
@@ -171,9 +171,43 @@ class DebugControllerTest {
         c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
 
         assertThat(c.awaitStop(3000)).isTrue();
-        assertThat(c.currentLine()).isEqualTo(5);
+        assertThat(c.currentLine()).isEqualTo(4);
         assertThat(c.stopDetail()).isEqualTo("x == 2");
         assertThat(c.stack().get(0).locals()).containsEntry("x", 2);
+    }
+
+    // A variable declared inside a block, changed on its last in-scope line — the case
+    // that used to slip through: the pre-statement hook only saw the change on the next
+    // line, which is already outside the block (return message), so `test` was gone.
+    // 1: import ...
+    // 2: Message processData(Message message) {
+    // 3:     if (message.getBody(String) == 'go') {
+    // 4:         def test = 1
+    // 5:         message.setProperty('p', 'v')
+    // 6:     }
+    // 7:     return message
+    // 8: }
+    private static final String BLOCK_SCOPED_SCRIPT =
+            "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                    + "Message processData(Message message) {\n"
+                    + "    if (message.getBody(String) == 'go') {\n"
+                    + "        def test = 1\n"
+                    + "        message.setProperty('p', 'v')\n"
+                    + "    }\n"
+                    + "    return message\n"
+                    + "}\n";
+
+    @Test
+    void conditionalDataBreakpoint_stopsOnTheDeclaringLine_whileTheVarIsStillInScope() {
+        DebugController c = new DebugController();
+        c.setDataBreakpoints(Map.of("test", "== 1"));
+        c.launch(RunRequest.ofScriptAndText(BLOCK_SCOPED_SCRIPT, "go"));
+
+        assertThat(c.awaitStop(3000)).isTrue();
+        assertThat(c.currentLine()).isEqualTo(4); // the `def test = 1` line, not the next line
+        assertThat(c.stopReason()).isEqualTo("data breakpoint");
+        assertThat(c.stopDetail()).isEqualTo("test == 1");
+        assertThat(c.stack().get(0).locals()).containsEntry("test", 1);
     }
 
     @Test

@@ -96,10 +96,16 @@ public final class InstrumentingCustomizer extends CompilationCustomizer {
         for (Statement child : original) {
             int line = child.getLineNumber();
             if (line > 0) {
-                rewritten.add(hook(line, depth, visible));
+                rewritten.add(hook("onStatement", line, depth, visible));
             }
             rewritten.add(instrumentStatement(child, depth, visible));
             registerDeclarations(child, visible);
+            // Post-hook after a mutating (expression) statement, with the locals it
+            // just produced — so a data breakpoint stops on the line that changed the
+            // value, while the variable is still in scope (not one statement later).
+            if (line > 0 && child instanceof ExpressionStatement) {
+                rewritten.add(hook("afterStatement", line, depth, visible));
+            }
         }
         block.getStatements().clear();
         block.getStatements().addAll(rewritten);
@@ -204,9 +210,9 @@ public final class InstrumentingCustomizer extends CompilationCustomizer {
         }
     }
 
-    private Statement hook(int line, int depth, Map<String, Variable> visible) {
+    private Statement hook(String method, int line, int depth, Map<String, Variable> visible) {
         StaticMethodCallExpression call = staticCall(
-                "onStatement",
+                method,
                 new ArgumentListExpression(
                         new ConstantExpression(line, true),
                         new ConstantExpression(depth, true),
