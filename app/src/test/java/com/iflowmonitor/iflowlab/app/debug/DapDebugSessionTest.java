@@ -162,6 +162,46 @@ class DapDebugSessionTest {
     }
 
     @Test
+    void conditionalDataBreakpoint_stopsOnFalseToTrueEdge_withConditionInDescription() {
+        String mutating =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                        + "Message processData(Message message) {\n"
+                        + "    def x = 1\n"
+                        + "    x = 2\n"
+                        + "    x = 3\n"
+                        + "    message.setBody(x.toString())\n"
+                        + "    return message\n"
+                        + "}\n";
+        request("initialize", "{}");
+        request("dataBreakpointInfo", "{\"name\":\"x\"}");
+        // A DAP `condition` turns the watch conditional: stop when x first equals 3.
+        request("setDataBreakpoints", "{\"breakpoints\":[{\"dataId\":\"x\",\"condition\":\"== 3\"}]}");
+        request("configurationDone", "{}");
+
+        String launchArgs = "{\"script\":" + mapper.valueToTree(mutating) + ",\"body\":\"in\"}";
+        request("launch", launchArgs);
+
+        assertThat(events("stopped")).hasSize(1);
+        JsonNode stop = events("stopped").get(0).path("body");
+        assertThat(stop.path("reason").asText()).isEqualTo("data breakpoint");
+        assertThat(stop.path("description").asText()).isEqualTo("x == 3");
+
+        // Paused where the predicate first held: x == 3.
+        request("stackTrace", "{\"threadId\":1}");
+        request("scopes", "{\"frameId\":0}");
+        int varRef = lastResponse("scopes").path("body").path("scopes").get(0).path("variablesReference").asInt();
+        request("variables", "{\"variablesReference\":" + varRef + "}");
+        assertThat(lastResponse("variables").path("body").path("variables")).anySatisfy(v -> {
+            assertThat(v.path("name").asText()).isEqualTo("x");
+            assertThat(v.path("value").asText()).isEqualTo("3");
+        });
+
+        // No further false→true edge → terminates on continue.
+        request("continue", "{\"threadId\":1}");
+        assertThat(events("terminated")).hasSize(1);
+    }
+
+    @Test
     void launch_withInlineServices_bindsThemForTheDebuggedRun() {
         // No workspace supplier configured — services arrive in the DAP launch args (SaaS R1).
         String credScript =

@@ -139,19 +139,22 @@ public final class DapDebugSession {
                 respond(reqSeq, command, body);
             }
             case "setDataBreakpoints" -> {
-                Set<String> names = new java.util.LinkedHashSet<>();
+                // Each breakpoint carries its variable name as dataId and an optional
+                // DAP `condition`: empty = break on change, "<op> <value>" = break on
+                // the condition's false→true edge (conditional watchpoints).
+                Map<String, String> specs = new LinkedHashMap<>();
                 ArrayNode verified = mapper.createArrayNode();
                 JsonNode dbps = args.path("breakpoints");
                 if (dbps.isArray()) {
                     for (JsonNode bp : dbps) {
                         String dataId = bp.path("dataId").asText("");
                         if (!dataId.isBlank()) {
-                            names.add(dataId);
+                            specs.put(dataId, bp.path("condition").asText(""));
                         }
                         verified.add(mapper.createObjectNode().put("verified", true));
                     }
                 }
-                controller.setDataBreakpoints(names);
+                controller.setDataBreakpoints(specs);
                 ObjectNode body = mapper.createObjectNode();
                 body.set("breakpoints", verified);
                 respond(reqSeq, command, body);
@@ -235,7 +238,8 @@ public final class DapDebugSession {
                 ObjectNode body = mapper.createObjectNode();
                 body.put("reason", reason);
                 if ("data breakpoint".equals(reason) && !controller.stopDetail().isBlank()) {
-                    body.put("description", controller.stopDetail() + " changed");
+                    // stopDetail is the full human phrase, e.g. "x changed" or "x >= 3".
+                    body.put("description", controller.stopDetail());
                 }
                 body.put("threadId", 1);
                 body.put("allThreadsStopped", true);

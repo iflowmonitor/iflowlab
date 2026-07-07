@@ -3,6 +3,7 @@ package com.iflowmonitor.iflowlab.engine.debug;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.iflowmonitor.iflowlab.engine.RunRequest;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -117,7 +118,7 @@ class DebugControllerTest {
     @Test
     void dataBreakpoint_stopsWhenAWatchedVariableChanges() {
         DebugController c = new DebugController();
-        c.setDataBreakpoints(Set.of("x"));
+        c.setDataBreakpoints(Map.of("x", "")); // empty condition = break on any change
         c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
 
         // First observed value (x=1 at the line-4 hook) is the baseline, no stop.
@@ -125,14 +126,14 @@ class DebugControllerTest {
         assertThat(c.awaitStop(3000)).isTrue();
         assertThat(c.currentLine()).isEqualTo(5);
         assertThat(c.stopReason()).isEqualTo("data breakpoint");
-        assertThat(c.stopDetail()).isEqualTo("x");
+        assertThat(c.stopDetail()).isEqualTo("x changed");
         assertThat(c.stack().get(0).locals()).containsEntry("x", 2);
     }
 
     @Test
     void dataBreakpoint_continue_stopsAgainOnTheNextChange() {
         DebugController c = new DebugController();
-        c.setDataBreakpoints(Set.of("x"));
+        c.setDataBreakpoints(Map.of("x", ""));
         c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
         assertThat(c.awaitStop(3000)).isTrue(); // line 5, x==2
 
@@ -141,6 +142,48 @@ class DebugControllerTest {
         assertThat(c.awaitStop(3000)).isTrue();
         assertThat(c.currentLine()).isEqualTo(6);
         assertThat(c.stack().get(0).locals()).containsEntry("x", 3);
+    }
+
+    @Test
+    void conditionalDataBreakpoint_stopsOnFalseToTrueEdge_notEveryHit() {
+        // x runs 1 → 2 → 3. Condition ">= 3" is false at 1 and 2, true at 3, so the
+        // FIRST (and only) stop is where x first satisfies it: line 6 (x==3 shows there).
+        DebugController c = new DebugController();
+        c.setDataBreakpoints(Map.of("x", ">= 3"));
+        c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
+
+        assertThat(c.awaitStop(3000)).isTrue();
+        assertThat(c.currentLine()).isEqualTo(6);
+        assertThat(c.stopReason()).isEqualTo("data breakpoint");
+        assertThat(c.stopDetail()).isEqualTo("x >= 3");
+        assertThat(c.stack().get(0).locals()).containsEntry("x", 3);
+
+        // No further false→true edge → the run finishes.
+        c.resume();
+        assertThat(c.awaitStop(3000)).isFalse();
+        assertThat(c.isFinished()).isTrue();
+    }
+
+    @Test
+    void conditionalDataBreakpoint_equalsMatchesNumericValue() {
+        DebugController c = new DebugController();
+        c.setDataBreakpoints(Map.of("x", "== 2"));
+        c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
+
+        assertThat(c.awaitStop(3000)).isTrue();
+        assertThat(c.currentLine()).isEqualTo(5);
+        assertThat(c.stopDetail()).isEqualTo("x == 2");
+        assertThat(c.stack().get(0).locals()).containsEntry("x", 2);
+    }
+
+    @Test
+    void conditionalDataBreakpoint_neverSatisfied_runsUninterrupted() {
+        DebugController c = new DebugController();
+        c.setDataBreakpoints(Map.of("x", "== 99"));
+        c.launch(RunRequest.ofScriptAndText(MUTATING_SCRIPT, "in"));
+
+        assertThat(c.awaitStop(3000)).isFalse();
+        assertThat(c.isFinished()).isTrue();
     }
 
     @Test

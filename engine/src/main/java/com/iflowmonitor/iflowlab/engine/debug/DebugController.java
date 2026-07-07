@@ -10,7 +10,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.codehaus.groovy.control.CompilerConfiguration;
@@ -24,7 +26,7 @@ import org.codehaus.groovy.control.CompilerConfiguration;
 public final class DebugController {
 
     private final Set<Integer> breakpoints = new HashSet<>();
-    private final Set<String> watches = new HashSet<>();
+    private final Map<String, String> watches = new LinkedHashMap<>();
     private final ByteArrayOutputStream stdout = new ByteArrayOutputStream();
     private final CapturingMessageLogFactory logFactory = new CapturingMessageLogFactory();
 
@@ -40,10 +42,14 @@ public final class DebugController {
         }
     }
 
-    /** Data breakpoints: stop when any of these locals changes value. */
-    public void setDataBreakpoints(Set<String> names) {
+    /**
+     * Data breakpoints: each entry maps a local name to its stop condition —
+     * empty = break on any change; "&lt;op&gt; &lt;value&gt;" = break on the
+     * false→true edge of that predicate.
+     */
+    public void setDataBreakpoints(Map<String, String> specs) {
         watches.clear();
-        watches.addAll(names);
+        watches.putAll(specs);
         if (session != null) {
             session.setWatches(watches);
         }

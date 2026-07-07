@@ -1,7 +1,8 @@
 package com.iflowmonitor.iflowlab.engine.debug;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,12 +26,17 @@ public final class DebugSession {
 
     private final Set<Integer> breakpoints = ConcurrentHashMap.newKeySet();
 
-    // Data breakpoints ("watches"): names of locals to stop on when their value
-    // changes. Both maps are touched only under {@link #lock} (onStatement holds
-    // it; setWatches acquires it). lastWatchValues holds the last-seen string form
-    // of each watched local, so a change is one statement-boundary comparison.
-    private final Set<String> watches = new HashSet<>();
+    // Data breakpoints ("watches"): a watched local's name mapped to its stop
+    // condition. An empty condition means "break on any value change"; otherwise
+    // the condition is "<op> <value>" (op in == != > < >= <= contains) and the
+    // watch fires on the false→true edge of that predicate. All three maps are
+    // touched only under {@link #lock} (onStatement holds it; setWatches acquires
+    // it). lastWatchValues holds the last-seen string form of each change-mode
+    // local; lastConditionState holds the last predicate result of each
+    // condition-mode local, so an edge is one statement-boundary comparison.
+    private final Map<String, String> watches = new LinkedHashMap<>();
     private final Map<String, String> lastWatchValues = new HashMap<>();
+    private final Map<String, Boolean> lastConditionState = new HashMap<>();
 
     private boolean paused;
     private boolean cancelled;
@@ -53,14 +59,19 @@ public final class DebugSession {
         breakpoints.add(line);
     }
 
-    /** The locals whose value changes should pause the run (data breakpoints). */
-    public void setWatches(Set<String> names) {
+    /**
+     * The locals whose change/condition should pause the run (data breakpoints).
+     * Each entry maps a local name to its condition: empty = break on any change;
+     * otherwise "&lt;op&gt; &lt;value&gt;" for a false→true predicate edge.
+     */
+    public void setWatches(Map<String, String> specs) {
         lock.lock();
         try {
             watches.clear();
-            watches.addAll(names);
+            watches.putAll(specs);
             // Drop baselines for names no longer watched; kept names keep theirs.
-            lastWatchValues.keySet().retainAll(names);
+            lastWatchValues.keySet().retainAll(specs.keySet());
+            lastConditionState.keySet().retainAll(specs.keySet());
         } finally {
             lock.unlock();
         }
@@ -78,14 +89,14 @@ public final class DebugSession {
             currentDepth = depth;
             currentStack = stack;
 
-            // Always re-baseline watched locals (side effect), so a change is seen
-            // exactly once regardless of why we stop this statement.
+            // Always re-baseline watched locals (side effect), so a change/edge is
+            // seen exactly once regardless of why we stop this statement.
             String dataHit = checkWatches(stack);
 
             boolean stop = true;
             if (dataHit != null) {
                 stopReason = "data breakpoint";
-                stopDetail = dataHit;
+                stopDetail = dataHit; // human phrase, e.g. "x changed" or "x >= 3"
             } else if (breakpoints.contains(line)) {
                 stopReason = "breakpoint";
                 stopDetail = "";
@@ -118,31 +129,107 @@ public final class DebugSession {
     }
 
     /**
-     * Updates the baseline for every watched local and returns the name of one
-     * whose value changed since the previous statement, or null. A watch only
-     * fires once it has a prior value (the first sighting sets the baseline), so
-     * a variable's initial assignment is not treated as a change. Only the
-     * innermost frame is inspected — a data breakpoint is scoped to the current
-     * frame, matching how it was set from the paused Variables view. Called under
-     * {@link #lock}.
+     * Re-baselines every watched local and returns a human phrase for one that
+     * hit this statement, or null. Two modes per watch:
+     * <ul>
+     *   <li><b>change</b> (empty condition): fires when the string value differs
+     *       from the previous statement. A watch only fires once it has a prior
+     *       value (the first sighting sets the baseline), so a variable's initial
+     *       assignment is not treated as a change. Phrase: {@code "name changed"}.
+     *   <li><b>condition</b> ("&lt;op&gt; &lt;value&gt;"): fires on the false→true
+     *       edge of the predicate — the first statement where it holds after not
+     *       holding — and re-arms when it goes false again. Phrase:
+     *       {@code "name op value"}.
+     * </ul>
+     * Only the innermost frame is inspected — a data breakpoint is scoped to the
+     * current frame, matching how it was set from the paused Variables view.
+     * Called under {@link #lock}.
      */
     private String checkWatches(List<StackFrameInfo> stack) {
         if (watches.isEmpty() || stack.isEmpty()) {
             return null;
         }
         Map<String, Object> locals = stack.get(0).locals();
-        String changed = null;
-        for (String name : watches) {
+        String hit = null;
+        for (Map.Entry<String, String> watch : watches.entrySet()) {
+            String name = watch.getKey();
             if (!locals.containsKey(name)) {
                 continue;
             }
-            String now = String.valueOf(locals.get(name));
-            String prev = lastWatchValues.put(name, now);
-            if (prev != null && !prev.equals(now)) {
-                changed = name;
+            Object value = locals.get(name);
+            String condition = watch.getValue();
+            if (condition == null || condition.isBlank()) {
+                String now = String.valueOf(value);
+                String prev = lastWatchValues.put(name, now);
+                if (prev != null && !prev.equals(now) && hit == null) {
+                    hit = name + " changed";
+                }
+            } else {
+                boolean now = evaluateCondition(value, condition);
+                Boolean prev = lastConditionState.put(name, now);
+                if (now && !Boolean.TRUE.equals(prev) && hit == null) {
+                    hit = name + " " + condition;
+                }
             }
         }
-        return changed;
+        return hit;
+    }
+
+    /**
+     * Evaluates a {@code "<op> <value>"} predicate against a local's current value
+     * in pure Java (no user code runs). Numeric operators coerce both sides to
+     * {@link BigDecimal}; a non-numeric actual makes an ordering comparison false.
+     * Equality falls back to a string compare when either side is non-numeric;
+     * {@code contains} is a substring test on the value's string form. A
+     * malformed condition evaluates to false.
+     */
+    static boolean evaluateCondition(Object value, String condition) {
+        String trimmed = condition.trim();
+        int sp = trimmed.indexOf(' ');
+        String op = sp < 0 ? trimmed : trimmed.substring(0, sp);
+        String operand = sp < 0 ? "" : trimmed.substring(sp + 1).trim();
+        String actual = String.valueOf(value);
+        switch (op) {
+            case "contains":
+                return actual.contains(operand);
+            case "==":
+            case "!=": {
+                BigDecimal a = toNumber(value);
+                BigDecimal b = toNumber(operand);
+                boolean equal = (a != null && b != null) ? a.compareTo(b) == 0 : actual.equals(operand);
+                return op.equals("==") == equal;
+            }
+            case ">":
+            case "<":
+            case ">=":
+            case "<=": {
+                BigDecimal a = toNumber(value);
+                BigDecimal b = toNumber(operand);
+                if (a == null || b == null) {
+                    return false;
+                }
+                int c = a.compareTo(b);
+                return switch (op) {
+                    case ">" -> c > 0;
+                    case "<" -> c < 0;
+                    case ">=" -> c >= 0;
+                    default -> c <= 0;
+                };
+            }
+            default:
+                return false;
+        }
+    }
+
+    private static BigDecimal toNumber(Object value) {
+        if (value instanceof Number n) {
+            return new BigDecimal(n.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(value).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     public void markFinished(Throwable cause) {
