@@ -90,6 +90,24 @@ class DapDebugSessionTest {
     }
 
     @Test
+    void terminated_emitsFinalResultBody_soContinueToEndShowsOutput() {
+        // A script that only setBody()s (no println) produced no debug output before,
+        // so continuing to the end left the panel blank. The final message body is now
+        // surfaced as an output event on clean termination.
+        request("initialize", "{}");
+        request("configurationDone", "{}");
+        String args = "{\"script\":" + mapper.valueToTree(SCRIPT) + ",\"body\":\"in\"}";
+        request("launch", args);
+
+        assertThat(events("terminated")).isNotEmpty();
+        String out = events("output").stream()
+                .map(e -> e.path("body").path("output").asText())
+                .reduce("", String::concat);
+        // SCRIPT ends with message.setBody(b.toString()) where b == 2.
+        assertThat(out).contains("2");
+    }
+
+    @Test
     void launch_withExplicitNulls_usesTextBodyAndDefaultProcessData() {
         // Regression: the SPA sends bodyBase64:null and function:null explicitly. A JSON
         // null must mean "absent" — text body + default processData — not the literal

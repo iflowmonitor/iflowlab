@@ -312,6 +312,12 @@ public final class DapDebugSession {
         Throwable cause = controller.exitCause();
         if (cause != null) {
             outputEvent("stderr", cause.getClass().getName() + ": " + cause.getMessage() + "\n");
+        } else if (controller.result() instanceof com.sap.gateway.ip.core.customdev.util.Message m) {
+            // A run continued to the end has no more pauses to inspect, so surface the
+            // transformed body (the point of the run) — otherwise a script that only
+            // setBody()s leaves the debug panel with nothing to show.
+            String body = m.getBody(String.class);
+            outputEvent("stdout", "── result body ──\n" + (body == null ? "(empty)" : body) + "\n");
         }
         event("terminated", null);
     }
