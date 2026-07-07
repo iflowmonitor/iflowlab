@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.iflowmonitor.iflowlab.cpimock.LogEntry;
 import com.iflowmonitor.iflowlab.cpimock.services.CpiServices;
 import com.iflowmonitor.iflowlab.engine.RunRequest;
+import com.iflowmonitor.iflowlab.engine.RunResult;
 import com.iflowmonitor.iflowlab.engine.debug.DebugController;
 import com.iflowmonitor.iflowlab.engine.debug.StackFrameInfo;
 import java.nio.charset.StandardCharsets;
@@ -312,12 +313,13 @@ public final class DapDebugSession {
         Throwable cause = controller.exitCause();
         if (cause != null) {
             outputEvent("stderr", cause.getClass().getName() + ": " + cause.getMessage() + "\n");
-        } else if (controller.result() instanceof com.sap.gateway.ip.core.customdev.util.Message m) {
-            // A run continued to the end has no more pauses to inspect, so surface the
-            // transformed body (the point of the run) — otherwise a script that only
-            // setBody()s leaves the debug panel with nothing to show.
-            String body = m.getBody(String.class);
-            outputEvent("stdout", "── result body ──\n" + (body == null ? "(empty)" : body) + "\n");
+        }
+        // Emit the full run envelope (body, header/property diff, attachments, logs) as a
+        // custom event so a debug run that finishes shows the SAME unified Output as a plain
+        // run — not just body in the debug panel. Null when cancelled or still running.
+        RunResult result = controller.buildResult();
+        if (result != null) {
+            event("iflowlabResult", mapper.valueToTree(result));
         }
         event("terminated", null);
     }

@@ -2,6 +2,8 @@ package com.iflowmonitor.iflowlab.engine.debug;
 
 import com.iflowmonitor.iflowlab.cpimock.CapturingMessageLogFactory;
 import com.iflowmonitor.iflowlab.engine.RunRequest;
+import com.iflowmonitor.iflowlab.engine.RunResult;
+import com.iflowmonitor.iflowlab.engine.RunResultBuilder;
 import com.sap.gateway.ip.core.customdev.util.Message;
 import groovy.lang.Binding;
 import groovy.lang.GroovyShell;
@@ -33,6 +35,12 @@ public final class DebugController {
     private DebugSession session;
     private Thread worker;
     private volatile Object result;
+    // Captured at launch (before the script runs) so buildResult() can diff the
+    // final header/property state against the input — the same envelope a plain run
+    // returns, so the workbench shows one unified Output for run and debug alike.
+    private Message seededMessage;
+    private Map<String, Object> headersBefore = Map.of();
+    private Map<String, Object> propertiesBefore = Map.of();
 
     public void setBreakpoints(Set<Integer> lines) {
         breakpoints.clear();
@@ -65,6 +73,9 @@ public final class DebugController {
         message.setBody(request.body());
         request.headers().forEach(message::setHeader);
         request.properties().forEach(message::setProperty);
+        seededMessage = message;
+        headersBefore = RunResultBuilder.snapshot(message.getHeaders());
+        propertiesBefore = RunResultBuilder.snapshot(message.getProperties());
 
         Binding binding = new Binding();
         binding.setVariable("messageLogFactory", logFactory);
@@ -168,5 +179,28 @@ public final class DebugController {
 
     public Object result() {
         return result;
+    }
+
+    /**
+     * The finished run's full {@link RunResult} — the same envelope a plain run
+     * returns (body, header/property diff, attachments, logs), so the workbench
+     * renders one unified Output for both. Returns {@code null} while the run is
+     * still going or when it was cancelled by the user (nothing meaningful to show).
+     */
+    public RunResult buildResult() {
+        if (session == null || !session.isFinished()) {
+            return null;
+        }
+        Throwable cause = session.exitCause();
+        if (cause instanceof DebugCancelledException) {
+            return null;
+        }
+        List<RunResult.LogLine> logs = RunResultBuilder.logs(stdout, logFactory);
+        if (cause != null) {
+            return RunResultBuilder.terminal(
+                    RunResult.Status.EXCEPTION, headersBefore, propertiesBefore, logs, RunResultBuilder.exceptionInfo(cause));
+        }
+        Message out = result instanceof Message m ? m : seededMessage;
+        return RunResultBuilder.success(out, headersBefore, propertiesBefore, logs);
     }
 }

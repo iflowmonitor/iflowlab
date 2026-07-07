@@ -90,21 +90,32 @@ class DapDebugSessionTest {
     }
 
     @Test
-    void terminated_emitsFinalResultBody_soContinueToEndShowsOutput() {
-        // A script that only setBody()s (no println) produced no debug output before,
-        // so continuing to the end left the panel blank. The final message body is now
-        // surfaced as an output event on clean termination.
+    void terminated_emitsUnifiedRunResult_soDebugShowsTheSameOutputAsRun() {
+        // A debug run driven to the end now emits the full run envelope (the same shape
+        // POST /run returns) as an `iflowlabResult` event, so the workbench renders one
+        // unified Output — body plus header/property diff — instead of body-only.
         request("initialize", "{}");
-        request("configurationDone", "{}");
-        String args = "{\"script\":" + mapper.valueToTree(SCRIPT) + ",\"body\":\"in\"}";
+        request("setBreakpoints", "{\"breakpoints\":[{\"line\":4}]}");
+        String script = "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                + "Message processData(Message message) {\n"
+                + "    message.setHeader('X-Out', 'done')\n"
+                + "    message.setProperty('p', '1')\n"
+                + "    message.setBody('result-body')\n"
+                + "    return message\n"
+                + "}\n";
+        String args = "{\"script\":" + mapper.valueToTree(script) + ",\"body\":\"in\"}";
         request("launch", args);
+        assertThat(events("stopped")).hasSize(1); // paused at line 4
+        request("continue", "{\"threadId\":1}");
 
-        assertThat(events("terminated")).isNotEmpty();
-        String out = events("output").stream()
-                .map(e -> e.path("body").path("output").asText())
-                .reduce("", String::concat);
-        // SCRIPT ends with message.setBody(b.toString()) where b == 2.
-        assertThat(out).contains("2");
+        assertThat(events("terminated")).hasSize(1);
+        List<JsonNode> results = events("iflowlabResult");
+        assertThat(results).hasSize(1);
+        JsonNode r = results.get(0).path("body");
+        assertThat(r.path("status").asText()).isEqualTo("OK");
+        assertThat(r.path("body").path("inline").asText()).isEqualTo("result-body");
+        assertThat(r.path("headersAfter").path("X-Out").asText()).isEqualTo("done");
+        assertThat(r.path("propertiesAfter").path("p").asText()).isEqualTo("1");
     }
 
     @Test
