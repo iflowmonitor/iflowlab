@@ -96,7 +96,9 @@ public final class InstrumentingCustomizer extends CompilationCustomizer {
         List<Statement> rewritten = new ArrayList<>(original.size() * 2);
         LinkedHashMap<String, Variable> visible = new LinkedHashMap<>(inherited);
 
-        for (Statement child : original) {
+        for (int i = 0; i < original.size(); i++) {
+            Statement child = original.get(i);
+            boolean isLast = i == original.size() - 1;
             int line = child.getLineNumber();
             if (line > 0) {
                 rewritten.add(hook("onStatement", line, depth, visible));
@@ -112,7 +114,10 @@ public final class InstrumentingCustomizer extends CompilationCustomizer {
             // Post-hook after a mutating (expression) statement, with the locals it
             // just produced — so a data breakpoint stops on the line that changed the
             // value, while the variable is still in scope (not one statement later).
-            if (line > 0 && child instanceof ExpressionStatement) {
+            // NEVER after the last statement of a block: a Groovy block's value is its
+            // last expression (a closure's implicit return), so appending a void hook
+            // there would replace the result — breaking collect/collectEntries/etc.
+            if (line > 0 && !isLast && child instanceof ExpressionStatement) {
                 rewritten.add(hook("afterStatement", line, depth, visible));
             }
         }

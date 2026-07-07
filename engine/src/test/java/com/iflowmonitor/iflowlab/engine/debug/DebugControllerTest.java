@@ -3,7 +3,10 @@ package com.iflowmonitor.iflowlab.engine.debug;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.iflowmonitor.iflowlab.engine.RunRequest;
+import com.iflowmonitor.iflowlab.engine.RunResult;
 import com.sap.gateway.ip.core.customdev.util.Message;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -260,8 +263,39 @@ class DebugControllerTest {
         assertThat(c.awaitStop(3000)).isFalse(); // no breakpoints → runs to the end
         assertThat(c.isFinished()).isTrue();
 
-        com.iflowmonitor.iflowlab.engine.RunResult r = c.buildResult();
+        RunResult r = c.buildResult();
         assertThat(r.propertiesAfter()).containsKeys("country", "testMode");
+    }
+
+    @Test
+    void buildResult_capturesPropertiesParsedFromAQueryHeader() {
+        // The exact reported script: parse CamelHttpQuery into properties via a closure.
+        String script =
+                "import com.sap.gateway.ip.core.customdev.util.Message\n"
+                        + "import java.nio.charset.Charset\n"
+                        + "Message extractUrlGetParameters(Message message) {\n"
+                        + "    String httpQuery = message.getHeader('CamelHttpQuery', String)\n"
+                        + "    if (httpQuery) {\n"
+                        + "        Map<String, String> queryParameters = URLDecoder.decode(httpQuery, Charset.defaultCharset().name())\n"
+                        + "            .replace('$','')\n"
+                        + "            .tokenize('&')\n"
+                        + "            .collectEntries { it.tokenize('=') }\n"
+                        + "        message.setProperties(queryParameters)\n"
+                        + "    }\n"
+                        + "    return message\n"
+                        + "}\n";
+        RunRequest req = new RunRequest(
+                script, "in".getBytes(StandardCharsets.UTF_8), "text/plain",
+                Map.of("CamelHttpQuery", "country=CZ&testMode=false"), Map.of(),
+                List.of(), 10_000L, null, List.of(), "extractUrlGetParameters");
+        DebugController c = new DebugController();
+        c.launch(req);
+        assertThat(c.awaitStop(3000)).isFalse();
+        assertThat(c.isFinished()).isTrue();
+        assertThat(c.exitCause()).isNull();
+
+        RunResult r = c.buildResult();
+        assertThat(r.propertiesAfter()).containsEntry("country", "CZ").containsEntry("testMode", "false");
     }
 
     @Test
