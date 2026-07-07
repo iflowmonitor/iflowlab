@@ -55,6 +55,43 @@ class XsltEngineTest {
     }
 
     @Test
+    void headerIsExposedAsXsltParam_sapParity() {
+        // SAP CI parity: a declared <xsl:param name="dc_country"/> is auto-filled from
+        // the message header named dc_country (e.g. set by a Content Modifier).
+        String xslt =
+                "<xsl:stylesheet version='1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>\n"
+                        + "  <xsl:output method='xml' omit-xml-declaration='yes'/>\n"
+                        + "  <xsl:param name='dc_country'/>\n"
+                        + "  <xsl:template match='/'><out country='{$dc_country}'/></xsl:template>\n"
+                        + "</xsl:stylesheet>\n";
+        RunRequest r = new RunRequest(xslt, "<a/>".getBytes(StandardCharsets.UTF_8), "application/xml",
+                Map.of("dc_country", "CZ"), Map.of(), List.of(), 5_000L);
+
+        RunResult result = engine.run(r);
+
+        assertThat(result.status()).isEqualTo(Status.OK);
+        assertThat(result.body().inline()).isEqualTo("<out country=\"CZ\"/>");
+    }
+
+    @Test
+    void headerAndPropertyBothBind_headerWinsOnClash() {
+        String xslt =
+                "<xsl:stylesheet version='1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>\n"
+                        + "  <xsl:output method='xml' omit-xml-declaration='yes'/>\n"
+                        + "  <xsl:param name='dc_country'/>\n"
+                        + "  <xsl:param name='dc_only_prop'/>\n"
+                        + "  <xsl:template match='/'><out c='{$dc_country}' p='{$dc_only_prop}'/></xsl:template>\n"
+                        + "</xsl:stylesheet>\n";
+        RunRequest r = new RunRequest(xslt, "<a/>".getBytes(StandardCharsets.UTF_8), "application/xml",
+                Map.of("dc_country", "CZ"), Map.of("dc_country", "SK", "dc_only_prop", "x"), List.of(), 5_000L);
+
+        RunResult result = engine.run(r);
+
+        assertThat(result.status()).isEqualTo(Status.OK);
+        assertThat(result.body().inline()).isEqualTo("<out c=\"CZ\" p=\"x\"/>");
+    }
+
+    @Test
     void malformedStylesheet_reportsException() {
         RunResult result = engine.run(req("<xsl:not-a-stylesheet>", "<a/>"));
         assertThat(result.status()).isEqualTo(Status.EXCEPTION);

@@ -97,11 +97,41 @@ public final class XsltEngine implements Engine {
             factory.setErrorListener(THROWING);
             Transformer transformer = factory.newTransformer(new StreamSource(new StringReader(request.script())));
             transformer.setErrorListener(THROWING);
+            // SAP Cloud Integration parity: a top-level <xsl:param name="X"/> is
+            // auto-filled from the message property/header named X (e.g. a `dc_country`
+            // header set by a Content Modifier). Set properties first, then headers so a
+            // header wins on a name clash; params the stylesheet doesn't declare are ignored.
+            bindParams(transformer, request.properties());
+            bindParams(transformer, request.headers());
             byte[] input = request.body() == null ? new byte[0] : request.body();
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             transformer.transform(new StreamSource(new ByteArrayInputStream(input)), new StreamResult(out));
             return out.toByteArray();
         };
+    }
+
+    /** Valid XSLT/XML parameter name (an NCName, no namespace prefix) — guards setParameter. */
+    private static final java.util.regex.Pattern PARAM_NAME =
+            java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_.\\-]*");
+
+    /**
+     * Expose each named header/property as a stylesheet parameter, mirroring SAP CI:
+     * a declared {@code <xsl:param name="X"/>} receives the value of the message entry
+     * named {@code X}. Names that aren't valid parameter names are skipped so a stray
+     * header (e.g. one containing a space) can never break the transform.
+     */
+    private static void bindParams(Transformer transformer, Map<String, Object> src) {
+        if (src == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> e : src.entrySet()) {
+            String name = e.getKey();
+            Object value = e.getValue();
+            if (name == null || value == null || !PARAM_NAME.matcher(name).matches()) {
+                continue;
+            }
+            transformer.setParameter(name, value instanceof String ? value : String.valueOf(value));
+        }
     }
 
     private static RunResult.BodyView bodyView(byte[] bytes, RunResult.BodyType type) {
