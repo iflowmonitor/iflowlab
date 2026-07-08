@@ -92,6 +92,61 @@ class XsltEngineTest {
     }
 
     @Test
+    void nonXmlBody_isSwappedForDummy_sapParity() {
+        // SAP CI pipeline receiver-determination parity: a non-XML body must not fail the
+        // transform — a <dummy/> document is substituted so the stylesheet still runs.
+        String xslt =
+                "<xsl:stylesheet version='1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>\n"
+                        + "  <xsl:output method='xml' omit-xml-declaration='yes'/>\n"
+                        + "  <xsl:template match='/'><root><xsl:value-of select='name(/*)'/></root></xsl:template>\n"
+                        + "</xsl:stylesheet>\n";
+        RunResult result = engine.run(req(xslt, "this is not xml, just plain text"));
+
+        assertThat(result.status()).isEqualTo(Status.OK);
+        assertThat(result.body().inline()).isEqualTo("<root>dummy</root>");
+    }
+
+    @Test
+    void emptyBody_isSwappedForDummy() {
+        String xslt =
+                "<xsl:stylesheet version='1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>\n"
+                        + "  <xsl:output method='xml' omit-xml-declaration='yes'/>\n"
+                        + "  <xsl:template match='/'><root><xsl:value-of select='name(/*)'/></root></xsl:template>\n"
+                        + "</xsl:stylesheet>\n";
+        RunResult result = engine.run(req(xslt, ""));
+
+        assertThat(result.status()).isEqualTo(Status.OK);
+        assertThat(result.body().inline()).isEqualTo("<root>dummy</root>");
+    }
+
+    @Test
+    void jsonBody_isSwappedForDummy() {
+        String xslt =
+                "<xsl:stylesheet version='1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>\n"
+                        + "  <xsl:output method='xml' omit-xml-declaration='yes'/>\n"
+                        + "  <xsl:template match='/'><root><xsl:value-of select='name(/*)'/></root></xsl:template>\n"
+                        + "</xsl:stylesheet>\n";
+        RunResult result = engine.run(req(xslt, "{\"a\":1}"));
+
+        assertThat(result.status()).isEqualTo(Status.OK);
+        assertThat(result.body().inline()).isEqualTo("<root>dummy</root>");
+    }
+
+    @Test
+    void xmlBody_isUsedAsIs_notSwapped() {
+        String xslt =
+                "<xsl:stylesheet version='1.0' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'>\n"
+                        + "  <xsl:output method='xml' omit-xml-declaration='yes'/>\n"
+                        + "  <xsl:template match='/'><root><xsl:value-of select='name(/*)'/></root></xsl:template>\n"
+                        + "</xsl:stylesheet>\n";
+        // Leading whitespace before the real XML must still count as XML (not swapped).
+        RunResult result = engine.run(req(xslt, "  \n<realRoot/>"));
+
+        assertThat(result.status()).isEqualTo(Status.OK);
+        assertThat(result.body().inline()).isEqualTo("<root>realRoot</root>");
+    }
+
+    @Test
     void malformedStylesheet_reportsException() {
         RunResult result = engine.run(req("<xsl:not-a-stylesheet>", "<a/>"));
         assertThat(result.status()).isEqualTo(Status.EXCEPTION);

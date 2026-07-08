@@ -104,10 +104,42 @@ public final class XsltEngine implements Engine {
             bindParams(transformer, request.properties());
             bindParams(transformer, request.headers());
             byte[] input = request.body() == null ? new byte[0] : request.body();
+            // SAP CI pipeline parity (receiver determination): an XSLT step must run even
+            // when the message body isn't XML. The pipeline substitutes a <dummy/> document
+            // so the transform has a well-formed source — the stylesheet typically keys off
+            // headers/properties, not the body. Decide by sniffing the bytes (not the declared
+            // Content-Type, which the workbench hides for XSLT) so a real XML body is kept.
+            if (!looksLikeXml(input)) {
+                input = DUMMY_BODY;
+            }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             transformer.transform(new StreamSource(new ByteArrayInputStream(input)), new StreamResult(out));
             return out.toByteArray();
         };
+    }
+
+    /** Substituted as the transform input when the message body isn't XML (SAP pipeline parity). */
+    private static final byte[] DUMMY_BODY = "<dummy></dummy>".getBytes(StandardCharsets.UTF_8);
+
+    /**
+     * True when the bytes look like an XML document — the first non-whitespace character
+     * (past an optional UTF-8 BOM) is {@code <}. Content-based, so it ignores a declared
+     * Content-Type; empty or all-whitespace input is not XML.
+     */
+    private static boolean looksLikeXml(byte[] body) {
+        int i = 0;
+        if (body.length >= 3 && (body[0] & 0xFF) == 0xEF && (body[1] & 0xFF) == 0xBB && (body[2] & 0xFF) == 0xBF) {
+            i = 3; // skip UTF-8 BOM
+        }
+        while (i < body.length) {
+            byte b = body[i];
+            if (b == ' ' || b == '\t' || b == '\n' || b == '\r') {
+                i++;
+                continue;
+            }
+            return b == '<';
+        }
+        return false;
     }
 
     /** Valid XSLT/XML parameter name (an NCName, no namespace prefix) — guards setParameter. */
