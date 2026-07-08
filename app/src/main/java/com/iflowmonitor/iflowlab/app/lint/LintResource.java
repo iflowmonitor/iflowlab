@@ -11,14 +11,22 @@ import java.util.List;
 @Path("/lint")
 public class LintResource {
 
-    private final FidelityLinter linter = new FidelityLinter();
+    private final FidelityLinter groovyLinter = new FidelityLinter();
+    private final XsltLinter xsltLinter = new XsltLinter();
 
-    public record LintRequest(String script) {}
+    /**
+     * {@code language} selects the linter; absent/unknown defaults to Groovy, so
+     * existing callers that post {@code {script}} keep working unchanged.
+     */
+    public record LintRequest(String script, String language) {}
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public List<Finding> lint(LintRequest request) {
-        return linter.lint(request.script());
+        if (request.language() != null && request.language().equalsIgnoreCase("xslt")) {
+            return xsltLinter.lint(request.script());
+        }
+        return groovyLinter.lint(request.script());
     }
 }
